@@ -1,0 +1,31 @@
+service tech.pyri.vision.viewer
+
+stdver 0.10
+
+import com.robotraconteur.device
+import com.robotraconteur.image
+
+using com.robotraconteur.device.Device
+using com.robotraconteur.device.DeviceInfo
+using com.robotraconteur.image.CompressedImage
+
+struct SaveSequenceStatus
+    field uint32 captured_image_count
+    field CompressedImage captured_image
+end
+
+object CameraViewer
+    function CompressedImage capture_frame_preview()
+    pipe CompressedImage preview_stream [readonly]
+
+    function CompressedImage save_to_globals(string global_name, bool save_system_state)
+    function SaveSequenceStatus{generator} save_sequence_to_globals(string global_name, bool save_system_state)
+end
+
+object CameraViewerService
+    implements Device
+
+    property DeviceInfo device_info [readonly,nolock]
+
+    objref CameraViewer{string} camera_viewer
+end
