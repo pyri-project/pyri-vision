@@ -20,88 +20,65 @@ import general_robotics_toolbox as rox
 import cv2
 from cv2 import aruco
 
-def _get_target_board(calibration_target):
-    # TODO: Don't hard code in marker board patterns
-    if calibration_target == "charuco1":
-        aruco_dict = aruco.Dictionary_get( aruco.DICT_4x4_1000 )
-        squareLength = 25.4*1e-3
-        markerLength = 25.4*.75*1e-3
-        board = aruco.CharucoBoard_create(10, 7, squareLength, markerLength, aruco_dict)
-        return board, aruco_dict
-    elif calibration_target == "charuco2":
-        aruco_dict = aruco.Dictionary_get( aruco.DICT_4X4_1000 )
-        squareLength = 44.45*1e-3
-        markerLength = 44.45*.75*1e-3
-        board = aruco.CharucoBoard_create(5, 4, squareLength, markerLength, aruco_dict)
-        return board, aruco_dict
-    else:
-        raise RR.InvalidArgumentException("Invalid calibration target")
+def _calibrate_camera_intrinsic2(images,board):
+    # opencv_camera_calibration.py:6
 
-def _read_aruco_board_targets(images, board, aruco_dict):
-    # Based on https://mecaruco2.readthedocs.io/en/latest/notebooks_rst/Aruco/sandbox/ludovic/aruco_calibration_rotation.html
-    """
-    Charuco base pose estimation.
-    """    
-    allCorners = []
-    allIds = []
-    decimator = 0
-    # SUB PIXEL CORNER DETECTION CRITERION
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.00001)
+    # TODO: Don't hardcode the calibration pattern
+    if board == "chessboard":
+        width = 7
+        height = 6
+        square_size=0.03
+    else:
+        raise RR.InvalidOperationException(f"Invalid calibration board {board}")
+
+    # termination criteria
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+
+    # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(8,6,0)
+    objp = np.zeros((height*width, 3), np.float32)
+    objp[:, :2] = np.mgrid[0:width, 0:height].T.reshape(-1, 2)
+
+    objp = objp * square_size
+
+    # Arrays to store object points and image points from all the images.
+    objpoints = []  # 3d point in real world space
+    imgpoints = []  # 2d points in image plane.
 
     for image in images:
         # TODO: more robust image conversion
         frame = image.data.reshape([image.image_info.height, image.image_info.width, int(len(image.data)/(image.image_info.height*image.image_info.width))], order='C')
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray, aruco_dict)
 
-        if len(corners)>0:
-            # SUB PIXEL DETECTION
-            for corner in corners:
-                cv2.cornerSubPix(gray, corner,
-                                 winSize = (3,3),
-                                 zeroZone = (-1,-1),
-                                 criteria = criteria)
-            res2 = cv2.aruco.interpolateCornersCharuco(corners,ids,gray,board)
-            if res2[1] is not None and res2[2] is not None and len(res2[1])>3 and decimator%1==0:
-                allCorners.append(res2[1])
-                allIds.append(res2[2])
+        # Find the chess board corners
+        ret, corners = cv2.findChessboardCorners(gray, (width, height), None)
 
-        decimator+=1
+        # If found, add object points, image points (after refining them)
+        if ret:
+            objpoints.append(objp)
 
-    imsize = gray.shape
-    return allCorners,allIds,imsize
+            corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+            imgpoints.append(corners2)
 
-def _calibrate_camera_intrinsic2(allCorners,allIds,imsize,board):
-    # Based on https://mecaruco2.readthedocs.io/en/latest/notebooks_rst/Aruco/sandbox/ludovic/aruco_calibration_rotation.html
-    """
-    Calibrates the camera using the dected corners.
-    """
-    cameraMatrixInit = np.array([[ 1.,    0., imsize[0]/2.],
-                                 [    0., 1., imsize[1]/2.],
-                                 [    0.,    0.,           1.]])
+            # Draw and display the corners
+            # img = cv2.drawChessboardCorners(frame, (width, height), corners2, ret)
+            # cv2.imshow("img", img)
+            # cv2.waitKey(1000)
 
-    distCoeffsInit = np.zeros((5,1))
-    #flags = (cv2.CALIB_USE_INTRINSIC_GUESS + cv2.CALIB_RATIONAL_MODEL + cv2.CALIB_FIX_ASPECT_RATIO)
-    flags = (cv2.CALIB_RATIONAL_MODEL)
-    (ret, camera_matrix, distortion_coefficients0,
-     rotation_vectors, translation_vectors,
-     stdDeviationsIntrinsics, stdDeviationsExtrinsics,
-     perViewErrors) = cv2.aruco.calibrateCameraCharucoExtended(
-                      charucoCorners=allCorners,
-                      charucoIds=allIds,
-                      board=board,
-                      imageSize=imsize,
-                      cameraMatrix=cameraMatrixInit,
-                      distCoeffs=distCoeffsInit,
-                      flags=flags,
-                      criteria=(cv2.TERM_CRITERIA_EPS & cv2.TERM_CRITERIA_COUNT, 10000, 1e-9))
+    # cv2.destroyAllWindows()
 
-    return ret, camera_matrix, distortion_coefficients0, rotation_vectors, translation_vectors
+    ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
 
+    mean_error = 0
+    for i in range(len(objpoints)):
+        imgpoints2, _ = cv2.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
+        error = cv2.norm(imgpoints[i], imgpoints2, cv2.NORM_L2)/len(imgpoints2)
+        mean_error += error
+    print( "total error: {}".format(mean_error/len(objpoints)) )
 
-def _calibrate_camera_intrinsic(images, calibration_target, aruco_dict):
-    allCorners,allIds,imsize=_read_aruco_board_targets(images, calibration_target, aruco_dict)
-    ret, mtx, dist, rvecs, tvecs = _calibrate_camera_intrinsic2(allCorners,allIds,imsize,calibration_target)
+    return ret, mtx, dist.flatten(), rvecs, tvecs
+
+def _calibrate_camera_intrinsic(images, calibration_target):    
+    ret, mtx, dist, rvecs, tvecs = _calibrate_camera_intrinsic2(images,calibration_target)
     if not ret:
         raise RR.OperationFailedException("Camera intrinsic calibration failed")
 
@@ -228,8 +205,7 @@ class CameraCalibrationService_impl:
             var2 = var_storage.getf_variable_value("globals",image_var)
             image_sequence.append(var2.data)
 
-        target, aruco_dict = _get_target_board(calibration_target)
-        camera_calib = _calibrate_camera_intrinsic(image_sequence, target, aruco_dict)
+        camera_calib = _calibrate_camera_intrinsic(image_sequence, calibration_target)
 
         var_storage.add_variable2("globals",output_global_name,"com.robotraconteur.imaging.camerainfo.CameraCalibration", \
             RR.VarValue(camera_calib,"com.robotraconteur.imaging.camerainfo.CameraCalibration"), ["camera_calibration_intrinsic"], 
