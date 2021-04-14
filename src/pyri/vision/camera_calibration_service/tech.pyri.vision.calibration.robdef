@@ -1,0 +1,20 @@
+service tech.pyri.vision.calibration
+
+stdver 0.10
+
+import com.robotraconteur.device
+
+using com.robotraconteur.device.Device
+using com.robotraconteur.device.DeviceInfo
+
+object CameraCalibrationService
+    implements Device
+
+    property DeviceInfo device_info [readonly,nolock]
+
+    function void calibrate_camera_intrinsic(string camera_local_device_name, string image_sequence_global_name, \
+        string calibration_target, string output_global_name)
+
+    function void calibrate_camera_extrinsic(string camera_local_device_name, string camera_intrinsic_calibration_global_name, \
+        string image_global_name, string origin_calibration_target, string output_global_name)
+end

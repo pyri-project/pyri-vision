@@ -13,7 +13,7 @@ setup(
     zip_safe=False,
     install_requires=[
         'pyri-common',
-        'opencv-python'
+        'opencv-contrib-python'
     ],
     tests_require=['pytest','pytest-asyncio'],
     extras_require={
