@@ -3,18 +3,37 @@ service tech.pyri.vision.calibration
 stdver 0.10
 
 import com.robotraconteur.device
+import com.robotraconteur.imaging.camerainfo
+import com.robotraconteur.image
+import com.robotraconteur.geometry
 
 using com.robotraconteur.device.Device
 using com.robotraconteur.device.DeviceInfo
+using com.robotraconteur.imaging.camerainfo.CameraCalibration
+using com.robotraconteur.image.CompressedImage
+using com.robotraconteur.geometry.NamedPose
+
+struct CameraCablibrateIntrinsicResult
+    field CameraCalibration calibration
+    field CompressedImage{list} display_images
+    field double calibration_error
+end
+
+struct CameraCablibrateExtrinsicResult
+    field NamedPose camera_pose
+    field CompressedImage display_image
+    field double calibration_error
+end
 
 object CameraCalibrationService
     implements Device
 
     property DeviceInfo device_info [readonly,nolock]
 
-    function void calibrate_camera_intrinsic(string camera_local_device_name, string image_sequence_global_name, \
-        string calibration_target, string output_global_name)
+    function CameraCablibrateIntrinsicResult calibrate_camera_intrinsic(string camera_local_device_name, \
+        string image_sequence_global_name, string calibration_target, string output_global_name)
 
-    function void calibrate_camera_extrinsic(string camera_local_device_name, string camera_intrinsic_calibration_global_name, \
-        string image_global_name, string origin_calibration_target, string output_global_name)
+    function CameraCablibrateExtrinsicResult calibrate_camera_extrinsic(string camera_local_device_name, \
+        string camera_intrinsic_calibration_global_name, string image_global_name, \
+        string origin_calibration_target, string output_global_name)
 end

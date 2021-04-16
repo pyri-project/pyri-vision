@@ -10,6 +10,8 @@ from RobotRaconteurCompanion.Util.InfoFileLoader import InfoFileLoader
 from RobotRaconteurCompanion.Util.AttributesUtil import AttributesUtil
 from RobotRaconteurCompanion.Util.RobotUtil import RobotUtil
 from RobotRaconteurCompanion.Util.IdentifierUtil import IdentifierUtil
+from RobotRaconteurCompanion.Util.ImageUtil import ImageUtil
+from RobotRaconteurCompanion.Util.GeometryUtil import GeometryUtil
 
 import time
 import threading
@@ -19,6 +21,24 @@ import general_robotics_toolbox as rox
 
 import cv2
 from cv2 import aruco
+
+def _cv_img_to_rr_display_img(img):
+    height,width = img.shape[0:2]
+    
+    s = 1
+
+    # Clamp image to 720p
+    s1 = 1280.0/width
+    s2 = 720.0/height
+    s = min(s1,s2)
+    if s < 1.0:
+        width = int(width*s)
+        height = int(height*s)
+        img = cv2.resize(img,(width,height))    
+
+    img_util = ImageUtil()
+
+    return img_util.array_to_compressed_image_jpg(img,70)
 
 def _calibrate_camera_intrinsic2(images,board):
     # opencv_camera_calibration.py:6
@@ -44,9 +64,13 @@ def _calibrate_camera_intrinsic2(images,board):
     objpoints = []  # 3d point in real world space
     imgpoints = []  # 2d points in image plane.
 
+    imgs = []
+
+    image_util = ImageUtil()
+
     for image in images:
-        # TODO: more robust image conversion
-        frame = image.data.reshape([image.image_info.height, image.image_info.width, int(len(image.data)/(image.image_info.height*image.image_info.width))], order='C')
+                
+        frame = image_util.image_to_array(image)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         # Find the chess board corners
@@ -60,7 +84,8 @@ def _calibrate_camera_intrinsic2(images,board):
             imgpoints.append(corners2)
 
             # Draw and display the corners
-            # img = cv2.drawChessboardCorners(frame, (width, height), corners2, ret)
+            img = cv2.drawChessboardCorners(frame, (width, height), corners2, ret)
+            imgs.append(img)
             # cv2.imshow("img", img)
             # cv2.waitKey(1000)
 
@@ -75,19 +100,18 @@ def _calibrate_camera_intrinsic2(images,board):
         mean_error += error
     print( "total error: {}".format(mean_error/len(objpoints)) )
 
-    return ret, mtx, dist.flatten(), rvecs, tvecs
+    return ret, mtx, dist.flatten(), rvecs, tvecs, mean_error, imgs
 
 def _calibrate_camera_intrinsic(images, calibration_target):    
-    ret, mtx, dist, rvecs, tvecs = _calibrate_camera_intrinsic2(images,calibration_target)
+    ret, mtx, dist, rvecs, tvecs, mean_error, imgs = _calibrate_camera_intrinsic2(images,calibration_target)
     if not ret:
         raise RR.OperationFailedException("Camera intrinsic calibration failed")
 
-    calib = RRN.NewStructure("com.robotraconteur.imaging.camerainfo.CameraCalibration")
-    size2d = RRN.GetNamedArrayDType("com.robotraconteur.geometryi.Size2D")
-    calib.image_size=np.zeros((1,),dtype=size2d)
-    calib.image_size[0]["width"]=images[0].image_info.width
-    calib.image_size[0]["height"]=images[0].image_info.height
+    geom_util = GeometryUtil()
 
+    calib = RRN.NewStructure("com.robotraconteur.imaging.camerainfo.CameraCalibration")
+    calib.image_size = geom_util.wh_to_size2d([images[0].image_info.width,images[0].image_info.height],dtype=np.int32)
+    
     calib.K = mtx
 
     dist_rr = RRN.NewStructure("com.robotraconteur.imaging.camerainfo.PlumbBobDistortionInfo")
@@ -99,9 +123,13 @@ def _calibrate_camera_intrinsic(images, calibration_target):
 
     calib.distortion_info = RR.VarValue(dist_rr,"com.robotraconteur.imaging.camerainfo.PlumbBobDistortionInfo")
 
-    return calib
+    imgs2 = []
+    for img in imgs:
+        imgs2.append(_cv_img_to_rr_display_img(img))
 
-def _calibrate_camera_extrinsic(intrinsic_calib, image, board, aruco_dict, camera_local_device_name):
+    return calib, imgs2, mean_error
+
+def _calibrate_camera_extrinsic(intrinsic_calib, image, board, camera_local_device_name):
 
     # TODO: verify calibration data
 
@@ -109,57 +137,47 @@ def _calibrate_camera_extrinsic(intrinsic_calib, image, board, aruco_dict, camer
     dist_rr = intrinsic_calib.distortion_info.data
     dist = np.array([dist_rr.k1, dist_rr.k2, dist_rr.p1, dist_rr.p2, dist_rr.k3],dtype=np.float64)
 
-    frame = image.data.reshape([image.image_info.height, image.image_info.width, int(len(image.data)/(image.image_info.height*image.image_info.width))], order='C')
+    image_util = ImageUtil()
+    frame = image_util.image_to_array(image)
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray, aruco_dict)
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.00001)
-
-    assert len(corners)>0
-    # SUB PIXEL DETECTION
-    for corner in corners:
-        cv2.cornerSubPix(gray, corner,
-                            winSize = (3,3),
-                            zeroZone = (-1,-1),
-                            criteria = criteria)
-    retval, charucoCorners, charucoIds = cv2.aruco.interpolateCornersCharuco(corners,ids,gray,board)
-    assert retval
-
-    retval, rvec, tvec = aruco.estimatePoseCharucoBoard(charucoCorners, charucoIds, board, mtx, dist, None, None)
-    assert retval
-
-    im_with_charuco_board = aruco.drawAxis(frame, mtx, dist, rvec, tvec, 0.1)
-    im_with_charuco_board = aruco.drawDetectedMarkers(im_with_charuco_board, corners, ids)
-    cv2.imshow("img",im_with_charuco_board)
-    cv2.waitKey()
-    cv2.destroyAllWindows()
-
-
-    R = (cv2.Rodrigues(rvec)[0]).transpose()
-    p = -R @ tvec
-    q = rox.R2q(R)
-
-    pose_dt = RRN.GetNamedArrayDType('com.robotraconteur.geometry.Pose')
-    pose = np.zeros((1,),dtype=pose_dt)
-    pose[0]["orientation"]["w"] = q[0]
-    pose[0]["orientation"]["x"] = q[1]
-    pose[0]["orientation"]["y"] = q[2]
-    pose[0]["orientation"]["z"] = q[3]
-    pose[0]["position"]["x"] = p[0]
-    pose[0]["position"]["y"] = p[1]
-    pose[0]["position"]["z"] = p[2]
-
-    ident_util = IdentifierUtil()
-
-    named_pose = RRN.NewStructure("com.robotraconteur.geometry.NamedPose")
-    named_pose.pose = pose
-    named_pose.parent_frame = ident_util.CreateIdentifierFromName("world")
-    named_pose.frame = ident_util.CreateIdentifierFromName(camera_local_device_name)
-
-    return named_pose
-
     
+    if board == "chessboard":
+        width = 7
+        height = 6
+        square_size=0.03
+    else:
+        raise RR.InvalidOperationException(f"Invalid calibration board {board}")
 
+    ret, corners = cv2.findChessboardCorners(gray, (width, height), None)
+    assert ret, "Could not find calibration target"
 
+    objp = np.zeros((height*width, 3), np.float32)
+    objp[:, :2] = np.mgrid[0:width, 0:height].T.reshape(-1, 2)
+
+    objp = objp * square_size
+
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+    
+    corners2 = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),criteria)
+
+    ret,rvecs, tvecs = cv2.solvePnP(objp, corners2, mtx, dist)
+
+    cv_image2 = cv2.aruco.drawAxis(frame,mtx,dist,rvecs.flatten(),tvecs.flatten(),0.1)    
+
+    R = cv2.Rodrigues(rvecs.flatten())[0]
+
+    R_landmark = np.array([[0,1,0],[1,0,0],[0,0,-1]],dtype=np.float64)
+
+    R_cam1 = R.transpose()
+    p_cam1 = -R.transpose() @ tvecs
+
+    R_cam = R_landmark.transpose() @ R_cam1
+    p_cam = R_landmark.transpose() @ p_cam1
+
+    T = rox.Transform(R_cam,p_cam,"world",camera_local_device_name)
+
+    geom_util = GeometryUtil()
+    return geom_util.rox_transform_to_named_pose(T), image_util.array_to_compressed_image_jpg(cv_image2), 0.0
 class CameraCalibrationService_impl:
     def __init__(self, device_manager_url, device_info = None, node : RR.RobotRaconteurNode = None):
         if node is None:
@@ -195,8 +213,9 @@ class CameraCalibrationService_impl:
         variable_persistence = var_consts["VariablePersistence"]
         variable_protection_level = var_consts["VariableProtectionLevel"]
 
-        if len(var_storage.filter_variables("globals",output_global_name,[])) > 0:
-            raise RR.InvalidOperationException(f"Global {output_global_name} already exists")
+        if len(output_global_name) > 0:
+            if len(var_storage.filter_variables("globals",output_global_name,[])) > 0:
+                raise RR.InvalidOperationException(f"Global {output_global_name} already exists")
 
         image_sequence = []
 
@@ -205,12 +224,20 @@ class CameraCalibrationService_impl:
             var2 = var_storage.getf_variable_value("globals",image_var)
             image_sequence.append(var2.data)
 
-        camera_calib = _calibrate_camera_intrinsic(image_sequence, calibration_target)
+        camera_calib, imgs, calibration_error = _calibrate_camera_intrinsic(image_sequence, calibration_target)
 
-        var_storage.add_variable2("globals",output_global_name,"com.robotraconteur.imaging.camerainfo.CameraCalibration", \
-            RR.VarValue(camera_calib,"com.robotraconteur.imaging.camerainfo.CameraCalibration"), ["camera_calibration_intrinsic"], 
-            {"device": camera_local_device_name}, variable_persistence["const"], None, variable_protection_level["read_write"], \
-            [], f"Camera \"{camera_local_device_name}\" intrinsic calibration", False)
+        if len(output_global_name) > 0:
+            var_storage.add_variable2("globals",output_global_name,"com.robotraconteur.imaging.camerainfo.CameraCalibration", \
+                RR.VarValue(camera_calib,"com.robotraconteur.imaging.camerainfo.CameraCalibration"), ["camera_calibration_intrinsic"], 
+                {"device": camera_local_device_name}, variable_persistence["const"], None, variable_protection_level["read_write"], \
+                [], f"Camera \"{camera_local_device_name}\" intrinsic calibration", False)
+
+        ret = RRN.NewStructure("tech.pyri.vision.calibration.CameraCablibrateIntrinsicResult")
+        ret.calibration = camera_calib
+        ret.display_images = imgs
+        ret.calibration_error = calibration_error
+
+        return ret
 
     def calibrate_camera_extrinsic(self, camera_local_device_name, camera_intrinsic_calibration_global_name,
         image_global_name, origin_calibration_target, output_global_name):
@@ -221,19 +248,27 @@ class CameraCalibrationService_impl:
         variable_persistence = var_consts["VariablePersistence"]
         variable_protection_level = var_consts["VariableProtectionLevel"]
 
-        if len(var_storage.filter_variables("globals",output_global_name,[])) > 0:
-            raise RR.InvalidOperationException(f"Global {output_global_name} already exists")
+        if len(output_global_name) > 0:
+            if len(var_storage.filter_variables("globals",output_global_name,[])) > 0:
+                raise RR.InvalidOperationException(f"Global {output_global_name} already exists")
 
         image = var_storage.getf_variable_value("globals",image_global_name).data
         intrinsic_calib = var_storage.getf_variable_value("globals",camera_intrinsic_calibration_global_name).data
 
-        target, aruco_dict = _get_target_board(origin_calibration_target)
-        camera_calib = _calibrate_camera_extrinsic(intrinsic_calib, image, target, aruco_dict, camera_local_device_name)
+        camera_pose, img, calibration_error = _calibrate_camera_extrinsic(intrinsic_calib, image, origin_calibration_target, camera_local_device_name)
+        
+        if len(output_global_name) > 0:
+            var_storage.add_variable2("globals",output_global_name,"com.robotraconteur.geometry.NamedPose", \
+                RR.VarValue(camera_pose,"com.robotraconteur.geometry.NamedPose"), ["camera_calibration_extrinsic"], 
+                {"device": camera_local_device_name}, variable_persistence["const"], None, variable_protection_level["read_write"], \
+                [], f"Camera \"{camera_local_device_name}\" extrinsic calibration", False)
 
-        var_storage.add_variable2("globals",output_global_name,"com.robotraconteur.geometry.NamedPose", \
-            RR.VarValue(camera_calib,"com.robotraconteur.imaging.geometry.NamedPose"), ["camera_calibration_extrinsic"], 
-            {"device": camera_local_device_name}, variable_persistence["const"], None, variable_protection_level["read_write"], \
-            [], f"Camera \"{camera_local_device_name}\" extrinsic calibration", False)
+        ret = RRN.NewStructure("tech.pyri.vision.calibration.CameraCablibrateExtrinsicResult")
+        ret.camera_pose = camera_pose
+        ret.display_image = img
+        ret.calibration_error = calibration_error
+
+        return ret
 
 def main():
 
