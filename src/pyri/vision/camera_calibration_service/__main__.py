@@ -162,8 +162,6 @@ def _calibrate_camera_extrinsic(intrinsic_calib, image, board, camera_local_devi
 
     ret,rvecs, tvecs = cv2.solvePnP(objp, corners2, mtx, dist)
 
-    cv_image2 = cv2.aruco.drawAxis(frame,mtx,dist,rvecs.flatten(),tvecs.flatten(),0.1)    
-
     R = cv2.Rodrigues(rvecs.flatten())[0]
 
     R_landmark = np.array([[0,1,0],[1,0,0],[0,0,-1]],dtype=np.float64)
@@ -173,6 +171,8 @@ def _calibrate_camera_extrinsic(intrinsic_calib, image, board, camera_local_devi
 
     R_cam = R_landmark.transpose() @ R_cam1
     p_cam = R_landmark.transpose() @ p_cam1
+
+    cv_image2 = cv2.aruco.drawAxis(frame,mtx,dist,cv2.Rodrigues(R_cam.transpose())[0],-R_cam.transpose()@p_cam,0.1)
 
     T = rox.Transform(R_cam,p_cam,"world",camera_local_device_name)
 
