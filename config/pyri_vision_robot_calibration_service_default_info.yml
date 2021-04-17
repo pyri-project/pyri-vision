@@ -1,19 +1,19 @@
 device:
-  name: pyri_camera_calibration_service
+  name: pyri_vision_robot_calibration_service
 manufacturer:
   name: PyRI_Project
   uuid: 244389f3-35d5-4f9f-a244-c89649ce2a18
 model:
-  name: pyri_camera_calibration_service
-  uuid: 81f9fd53-c1bb-4d7e-a463-8f2429201361
-user_description: Camera calibration service
+  name: pyri_vision_robot_calibration_service
+  uuid: cbff14ce-3c5b-41a8-8628-bcfc369f88ec
+user_description: Vision based robot calibration service
 serial_number: 1
 device_classes:
   - class_identifier:
       name: pyri_vision
       uuid: 940ab344-672d-4086-80b7-91ab792bf2c8
     subclasses:
-      - camera_calibration
+      - robot_calibration
 implemented_types:
   - com.robotraconteur.device.Device
-  - tech.pyri.vision.calibration.CameraCalibrationService
+  - tech.pyri.vision.robot_calibration.RobotCalibrationService
