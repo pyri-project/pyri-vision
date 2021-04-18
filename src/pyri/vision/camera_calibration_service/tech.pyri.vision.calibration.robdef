@@ -11,16 +11,16 @@ using com.robotraconteur.device.Device
 using com.robotraconteur.device.DeviceInfo
 using com.robotraconteur.imaging.camerainfo.CameraCalibration
 using com.robotraconteur.image.CompressedImage
-using com.robotraconteur.geometry.NamedPose
+using com.robotraconteur.geometry.NamedPoseWithCovariance
 
-struct CameraCablibrateIntrinsicResult
+struct CameraCalibrateIntrinsicResult
     field CameraCalibration calibration
     field CompressedImage{list} display_images
     field double calibration_error
 end
 
-struct CameraCablibrateExtrinsicResult
-    field NamedPose camera_pose
+struct CameraCalibrateExtrinsicResult
+    field NamedPoseWithCovariance camera_pose
     field CompressedImage display_image
     field double calibration_error
 end
@@ -30,10 +30,10 @@ object CameraCalibrationService
 
     property DeviceInfo device_info [readonly,nolock]
 
-    function CameraCablibrateIntrinsicResult calibrate_camera_intrinsic(string camera_local_device_name, \
+    function CameraCalibrateIntrinsicResult calibrate_camera_intrinsic(string camera_local_device_name, \
         string image_sequence_global_name, string calibration_target, string output_global_name)
 
-    function CameraCablibrateExtrinsicResult calibrate_camera_extrinsic(string camera_local_device_name, \
+    function CameraCalibrateExtrinsicResult calibrate_camera_extrinsic(string camera_local_device_name, \
         string camera_intrinsic_calibration_global_name, string image_global_name, \
         string origin_calibration_target, string output_global_name)
 end

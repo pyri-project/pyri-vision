@@ -3,250 +3,161 @@
 import sys
 import RobotRaconteur as RR
 RRN=RR.RobotRaconteurNode.s
-from RobotRaconteur.Client import *     #import RR client library to connect 
 import numpy as np
-
-import cv2
-import os
-from os import listdir
-from os.path import isfile, join
-import json 
+import argparse
+import RobotRaconteurCompanion as RRC
+from pyri.device_manager_client import DeviceManagerClient
+import importlib.resources as resources
+from RobotRaconteurCompanion.Util.InfoFileLoader import InfoFileLoader
+from RobotRaconteurCompanion.Util.AttributesUtil import AttributesUtil
+from RobotRaconteurCompanion.Util.RobotUtil import RobotUtil
+from RobotRaconteurCompanion.Util.IdentifierUtil import IdentifierUtil
+from RobotRaconteurCompanion.Util.ImageUtil import ImageUtil
+from RobotRaconteurCompanion.Util.GeometryUtil import GeometryUtil
 
 import general_robotics_toolbox as rox
-import opencv_aruco_extrinsic_calibration as calibrator
+from . import opencv_aruco_extrinsic_calibration as calibrator
 
-class CameraRobotCalibration_impl(object):
-    def __init__(self):
-        self.url_camera = None 
-        self.camera_sub = None
-        self.camera = None # RR camera object
+import cv2
 
-        # Create a folder for saved images
-        self.path = "./calibration_files"
-        self.path_imgs = "./calibration_imgs"
-        self.path_poses = "./calibration_poses"
-        self.extension = ".yml"
-        self.extension_imgs = ".png"
-        self.extension_poses = ".json"
-        self.prefix = "images"
 
-        if not os.path.exists(self.path):
-            os.makedirs(self.path)
-
-        if not os.path.exists(self.path_imgs):
-            os.makedirs(self.path_imgs)
-
-        if not os.path.exists(self.path_poses):
-            os.makedirs(self.path_poses)
-
-        self.saved_endeff_poses_dict = {} # Dictionary to store corresponding end eff. pose RR Pose objects
-        self.saved_marker_poses_dict = {} # Dictionary to store corresponding marker poses wrt robot
-
-    def reset(self):
-        self.url_camera = None 
-        self.camera_sub = None
-        self.camera = None # RR camera object
-
-        # Create a folder for saved images
-        self.path = "./calibration_files"
-        self.path_imgs = "./calibration_imgs"
-        self.path_poses = "./calibration_poses"
-        self.extension = ".yml"
-        self.extension_imgs = ".png"
-        self.extension_poses = ".json"
-        self.prefix = "images"
-
-        if not os.path.exists(self.path):
-            os.makedirs(self.path)
-
-        if not os.path.exists(self.path_imgs):
-            os.makedirs(self.path_imgs)
-
-        if not os.path.exists(self.path_poses):
-            os.makedirs(self.path_poses)
-
-        self.saved_endeff_poses_dict = {} # Dictionary to store corresponding end eff. pose RR Pose objects
-        self.saved_marker_poses_dict = {} # Dictionary to store corresponding marker poses wrt robot
-
-    def connect2camera(self, url_camera):
-        if self.camera is None:
-            self.url_camera = url_camera
-
-            self.camera = RRN.ConnectService(self.url_camera) # connect to camera with the given url
-            # self.camera_sub = RRN.SubscriberService(self.url_camera)
-            # self.camera = self.camera_sub.GetDefaultClientWait(1)
-
-            # Define camera modes
-
-            # log that the camera is successfully connected
-            print("Camera is connected to CameraRobotCalibration service!")
+class CameraRobotCalibrationService_impl(object):
+    def __init__(self, device_manager_url, device_info = None, node : RR.RobotRaconteurNode = None):
+        if node is None:
+            self._node = RR.RobotRaconteurNode.s
         else:
-            # Give an error that says the camera is already connected
-            print("Camera is already connected to CameraRobotCalibration service! Trying to connect again..")
-            self.reset()
-            self.connect2camera(url_camera)
+            self._node = node
+        self.device_info = device_info
+                
+        self.service_path = None
+        self.ctx = None
 
-    def saved_calibrations(self):
-        self.saved_calibration_filenames = [f for f in listdir(self.path) if f.endswith(self.extension)]
+        self.device_manager = DeviceManagerClient(device_manager_url)
+        self.device_manager.device_added += self._device_added
+        self.device_manager.device_removed += self._device_removed
+        self.device_manager.refresh_devices(5)
 
-        print(self.saved_calibration_filenames)
-        return self.saved_calibration_filenames
-
-    def delete_calibration(self,filename):
-        if os.path.exists(self.path +"/"+ filename):
-            os.remove(self.path +"/"+ filename)
-        else:
-            print("The file does not exist")
-
-    def calibrate_n_save(self, filename, aruco_dict, aruco_id, aruco_markersize, T_eef_to_marker,R_RPY_eef_to_marker, mtx, dist):
-        # filename: calibration file output filename
-        # mtx: opencv camera matrix 
-        # dist: opencv distortion coefficients
-
-        ## Add marker pose to the end effector poses and create a dict for marker poses wrt robot base
-        # Convert R_RPY euler angles to rotation matrix
-        Rx = rox.rot(np.array(([1.],[0.],[0.])), np.deg2rad(float(R_RPY_eef_to_marker[0])))
-        Ry = rox.rot(np.array(([0.],[1.],[0.])), np.deg2rad(float(R_RPY_eef_to_marker[1])))
-        Rz = rox.rot(np.array(([0.],[0.],[1.])), np.deg2rad(float(R_RPY_eef_to_marker[2])))
-        R_eef_to_marker = Rz @ Ry @ Rx
-
-        # Convert given T_eef_to_marker to mm from meters
-        T_eef_to_marker = T_eef_to_marker*1000.0
-
-        for key in self.saved_endeff_poses_dict:
-            R_base_to_eef = self.saved_endeff_poses_dict[key][0]
-            R_base_to_marker = R_base_to_eef @ R_eef_to_marker
-
-            T_base_to_eef = self.saved_endeff_poses_dict[key][1]
-            T_base_to_marker = T_base_to_eef + (R_base_to_eef @ T_eef_to_marker)
-            self.saved_marker_poses_dict[key] = [R_base_to_marker.tolist(),T_base_to_marker.tolist()] 
-            # Note that now dictonary became for saved marker poses with list elements rather than np.arrays
-
-        # Save the end effector poses dictonary to a json file
-        saved_poses_filename = filename.split(self.extension)[0]+self.extension_poses # replaces .yml extension with .json
+        self.robot_util = RobotUtil(self._node)
+        self.geom_util = GeometryUtil(self._node)
+        self.image_util = ImageUtil(self._node)
         
-        if len(self.saved_endeff_poses_dict) > 0: 
-            with open(self.path_poses+'/'+saved_poses_filename, 'w') as fp:
-                json.dump(self.saved_marker_poses_dict, fp, sort_keys=True)
+    def RRServiceObjectInit(self, ctx, service_path):
+        self.service_path = service_path
+        self.ctx = ctx
+        
+    def _device_added(self, local_device_name):
+       pass 
+
+    def _device_removed(self, local_device_name):
+        pass
+
+    def calibrate_robot_base(self, robot_local_device_name, camera_intrinsic_calibration_global_name, camera_extrinsic_calibration_global_name, \
+        image_sequence_global_name, aruco_dict, aruco_id, aruco_markersize, flange_to_marker, output_global_name):
+        
+
+        var_storage = self.device_manager.get_device_client("variable_storage",1)
+
+        var_consts = var_storage.RRGetNode().GetConstants('tech.pyri.variable_storage', var_storage)
+        variable_persistence = var_consts["VariablePersistence"]
+        variable_protection_level = var_consts["VariableProtectionLevel"]
+
+        if len(output_global_name) > 0:
+            if len(var_storage.filter_variables("globals",output_global_name,[])) > 0:
+                raise RR.InvalidOperationException(f"Global {output_global_name} already exists")
+
+        image_sequence = []
+        joint_pos_sequence = []
+
+        image_sequence_vars = var_storage.getf_variable_value("globals",image_sequence_global_name)
+        for image_var in image_sequence_vars.data.splitlines():
+            var2 = var_storage.getf_variable_value("globals",image_var)
+            image_sequence.append(self.image_util.compressed_image_to_array(var2.data))
+            var2_tags = var_storage.getf_variable_attributes("globals", image_var)
+            var2_state_var_name = var2_tags["system_state"]
+            var2_state = var_storage.getf_variable_value("globals", var2_state_var_name)
+            joint_pos = None 
+            for s in var2_state.data.devices_states[robot_local_device_name].state:
+                if s.type == "com.robotraconteur.robotics.robot.RobotState":
+                    joint_pos = s.state_data.data.joint_position
+            assert joint_pos is not None, "Could not find joint position in state sequence"
+            joint_pos_sequence.append(joint_pos)
+
+        cam_intrinsic_calib = var_storage.getf_variable_value("globals",camera_intrinsic_calibration_global_name).data
+        cam_extrinsic_calib = var_storage.getf_variable_value("globals",camera_extrinsic_calibration_global_name).data
+
+        mtx = cam_intrinsic_calib.K
+        dist_rr = cam_intrinsic_calib.distortion_info.data
+        dist = np.array([dist_rr.k1, dist_rr.k2, dist_rr.p1, dist_rr.p2, dist_rr.k3],dtype=np.float64)
+
+        cam_pose = self.geom_util.named_pose_to_rox_transform(cam_extrinsic_calib.pose)
+
+        robot = self.device_manager.get_device_client(robot_local_device_name,1)
+        robot_info = robot.robot_info
+        rox_robot = self.robot_util.robot_info_to_rox_robot(robot_info,0)
+        
 
         # Calibrate
-        R_cam2base, T_cam2base, R_base2cam, T_base2cam = calibrator.calibrate(self.path_imgs, self.prefix, self.extension_imgs, self.path_poses, saved_poses_filename, aruco_dict, aruco_id, aruco_markersize, mtx, dist)
+        robot_pose1, robot_pose_cov, img, calibration_error = calibrator.calibrate(image_sequence, joint_pos_sequence, aruco_dict, aruco_id, aruco_markersize, flange_to_marker, mtx, dist, cam_pose, rox_robot, robot_local_device_name)
         
-        # And Save
-        cv_file = cv2.FileStorage(self.path +"/"+ filename, cv2.FILE_STORAGE_WRITE)
-        # Camera Matrix
-        cv_file.write("K", mtx)
-        # Distortion Coefficients
-        cv_file.write("D", dist)
-        # Rotation matrix 
-        cv_file.write("R_co", R_cam2base )
-        # Tranlastion vector
-        cv_file.write("T_co", T_cam2base)
-        # Rotation matrix 
-        cv_file.write("R_oc", R_base2cam )
-        # Tranlastion vector
-        cv_file.write("T_oc", T_base2cam)
-        # note you *release* you don't close() a FileStorage object
-        cv_file.release()
+        robot_pose = self._node.NewStructure("com.robotraconteur.geometry.NamedPoseWithCovariance")
+        robot_pose.pose = robot_pose1
+        robot_pose.covariance = robot_pose_cov
 
+        if len(output_global_name) > 0:
+            var_storage.add_variable2("globals",output_global_name,"com.robotraconteur.geometry.NamedPoseWithCovariance", \
+                RR.VarValue(robot_pose,"com.robotraconteur.geometry.NamedPoseWithCovariance"), ["robot_base_pose_calibration"], 
+                {"device": robot_local_device_name}, variable_persistence["const"], None, variable_protection_level["read_write"], \
+                [], f"Robot \"{robot_local_device_name}\" base pose calibration", False)
 
-    def load_calibration(self, filename):
-        if os.path.exists(self.path +"/"+ filename):
-            # FILE_STORAGE_READ
-            cv_file = cv2.FileStorage(self.path +"/"+ filename, cv2.FILE_STORAGE_READ)
+        ret = RRN.NewStructure("tech.pyri.vision.robot_calibration.CameraRobotBaseCalibrateResult")
+        ret.robot_pose = robot_pose
+        ret.display_images = img
+        ret.calibration_error = calibration_error
 
-            # note we also have to specify the type to retrieve other wise we only get a
-            # FileNode object back instead of a matrix
-            camera_matrix = cv_file.getNode("K").mat()
-            dist_matrix = cv_file.getNode("D").mat()
-            R_matrix_co = cv_file.getNode("R_co").mat()
-            T_vector_co = cv_file.getNode("T_co").mat()
-            R_matrix_oc = cv_file.getNode("R_oc").mat()
-            T_vector_oc = cv_file.getNode("T_oc").mat()
-
-            cv_file.release()
-
-            # Pack the results into CalibrationExtrinsicParameters structure
-            params = RRN.NewStructure("experimental.pluginCameraRobotCalibration.CalibrationExtrinsicParameters")
-            params.camera_matrix = camera_matrix
-            params.distortion_coefficients = dist_matrix
-            params.R_co = R_matrix_co
-            params.T_co = T_vector_co
-            params.R_oc = R_matrix_oc
-            params.T_oc = T_vector_oc
-
-            return params
-        else:
-            print("The file does not exist")
-
-    def WebcamImageToMat(self, image):
-        frame2=image.data.reshape([image.image_info.height, image.image_info.width, 3], order='C')
-        return frame2
-
-    def capture_image_with_robot_pose(self, R,T):
-        if self.camera is not None:
-            print("capture_image_with_robot_pose function is called")
-            try: 
-                # Capture the current image from the camera and return
-                frame = self.camera.capture_frame()
-                # Get how many images exist in the imgs directory
-                num_imgs = self.num_of_captured_images()
-                # Set the image file name accordingly
-                filename = self.prefix +str(num_imgs)+self.extension_imgs
-                # Save it to the imgs directory
-                cv2.imwrite(self.path_imgs+"/"+filename,self.WebcamImageToMat(frame))
-
-                # Add the current robot pose into poses dictionary for the captured image
-                self.saved_endeff_poses_dict[filename] = [R,T*1000.0]  # robot_pose is a RR Pose object
-
-            except:
-                import traceback
-                print(traceback.format_exc())
-            
-        else:
-            # Give an error message to show that the robot is not connected
-            print("Image capturing failed. Camera is not connected to Cameracalibration service yet!")
-
-    def num_of_captured_images(self):
-        self.saved_images_filenames = [f for f in listdir(self.path_imgs) if f.endswith(self.extension_imgs)]
-
-        # print(len(self.saved_images_filenames))
-        return len(self.saved_images_filenames)
-
-    def remove_captured_images(self):
-        # Remove images
-        for f in os.listdir(self.path_imgs):
-            if not f.endswith(self.extension_imgs):
-                continue
-            os.remove(os.path.join(self.path_imgs, f))
-
-        # Remove corresponding poses json files
-        for f in os.listdir(self.path_poses):
-            if not f.endswith(self.extension_poses):
-                continue
-            os.remove(os.path.join(self.path_poses, f))
-
-        # Also reset the corresponding poses dict
-        self.saved_endeff_poses_dict = {}
-        self.saved_marker_poses_dict = {}
+        return ret
 
 def main():
+
+    parser = argparse.ArgumentParser(description="PyRI Vision Robot Calibration Service")    
+    parser.add_argument("--device-info-file", type=argparse.FileType('r'),default=None,required=True,help="Device info file for robot calibration service (required)")
+    parser.add_argument('--device-manager-url', type=str, default=None,required=True,help="Robot Raconteur URL for device manager service (required)")
+    parser.add_argument("--wait-signal",action='store_const',const=True,default=False, help="wait for SIGTERM or SIGINT (Linux only)")
+
+    args, _ = parser.parse_known_args()
+    RRC.RegisterStdRobDefServiceTypes(RRN)
+
+    # register service type
+    RRN.RegisterServiceType(resources.read_text(__package__,'tech.pyri.vision.robot_calibration.robdef'))
+
+    with args.device_info_file:
+        device_info_text = args.device_info_file.read()
+
+    info_loader = InfoFileLoader(RRN)
+    device_info, device_ident_fd = info_loader.LoadInfoFileFromString(device_info_text, "com.robotraconteur.device.DeviceInfo", "device")
+
+    attributes_util = AttributesUtil(RRN)
+    device_attributes = attributes_util.GetDefaultServiceAttributesFromDeviceInfo(device_info)
+
     # RR.ServerNodeSetup("NodeName", TCP listen port, optional set of flags as parameters)
-    with RR.ServerNodeSetup("experimental.plugin-cameraRobotCalibration-service", 8902) as node_setup:
-
-        # register service type
-        RRN.RegisterServiceTypeFromFile("./experimental.pluginCameraRobotCalibration")
-
-        # create object
-        CameraRobotCalibration_inst = CameraRobotCalibration_impl()
+    with RR.ServerNodeSetup("pyri.tech.vision.robot_calibration", 55918) as node_setup:
+        
+          # create object
+        CameraRobotCalibrationService_inst = CameraRobotCalibrationService_impl(args.device_manager_url, device_info=device_info, node = RRN)
         # register service with service name "CameraCalibration", type "experimental.pluginCameraCalibration.CameraCalibration", actual object: CameraCalibration_inst
-        RRN.RegisterService("CameraRobotCalibration","experimental.pluginCameraRobotCalibration.CameraRobotCalibration",CameraRobotCalibration_inst)
+        ctx = RRN.RegisterService("camera_robot_calibration","tech.pyri.vision.robot_calibration.CameraRobotCalibrationService",CameraRobotCalibrationService_inst)
+        ctx.SetServiceAttributes(device_attributes)
 
-        #Wait for the user to shutdown the service
-        if (sys.version_info > (3, 0)):
-            input("pluginCameraRobotCalibration Server started, press enter to quit...")
+        if args.wait_signal:  
+            #Wait for shutdown signal if running in service mode          
+            print("Press Ctrl-C to quit...")
+            import signal
+            signal.sigwait([signal.SIGTERM,signal.SIGINT])
         else:
-            raw_input("pluginCameraRobotCalibration Server started, press enter to quit...")
+            #Wait for the user to shutdown the service
+            if (sys.version_info > (3, 0)):
+                input("Server started, press enter to quit...")
+            else:
+                raw_input("Server started, press enter to quit...")
 
 if __name__ == '__main__':
     main()

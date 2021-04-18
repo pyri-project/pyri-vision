@@ -9,6 +9,7 @@ import importlib.resources as resources
 from RobotRaconteurCompanion.Util.InfoFileLoader import InfoFileLoader
 from RobotRaconteurCompanion.Util.AttributesUtil import AttributesUtil
 from RobotRaconteurCompanion.Util.RobotUtil import RobotUtil
+from RobotRaconteurCompanion.Util.ImageUtil import ImageUtil
 
 import time
 import threading
@@ -21,6 +22,7 @@ class CameraViewer_impl:
         self._camera_sub = camera_sub
         self._camera_sub.ClientConnected += self._client_connected
         self._parent = parent
+        self._image_util = ImageUtil()
         
         try:
             c = self._camera_sub.GetDefaultClient()
@@ -82,7 +84,9 @@ class CameraViewer_impl:
             if len(var_storage.filter_variables("globals",f"{global_name}_system_state",[])) > 0:
                 raise RR.InvalidOperationException(f"Global {global_name}_system_state already exists")
 
-        img = self._camera_sub.GetDefaultClient().capture_frame()
+        img1 = self._camera_sub.GetDefaultClient().capture_frame()
+        img2 = self._image_util.image_to_array(img1)
+        img = self._image_util.array_to_compressed_image_png(img2)
 
         attrs = {}
 
@@ -95,8 +99,8 @@ class CameraViewer_impl:
                 None, variable_protection_level["read_write"], \
                 [], "Captured system state", False)
 
-        var_storage.add_variable2("globals",global_name,"com.robotraconteur.image.Image", \
-            RR.VarValue(img,"com.robotraconteur.image.Image"), ["image"], attrs, variable_persistence["const"], 
+        var_storage.add_variable2("globals",global_name,"com.robotraconteur.image.CompressedImage", \
+            RR.VarValue(img,"com.robotraconteur.image.CompressedImage"), ["image"], attrs, variable_persistence["const"], 
             None, variable_protection_level["read_write"], \
             [], "Captured image", False)
 

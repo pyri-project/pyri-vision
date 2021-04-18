@@ -16,4 +16,4 @@ device_classes:
       - robot_calibration
 implemented_types:
   - com.robotraconteur.device.Device
-  - tech.pyri.vision.robot_calibration.RobotCalibrationService
+  - tech.pyri.vision.robot_calibration.VisionRobotCalibrationService

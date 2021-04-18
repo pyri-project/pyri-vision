@@ -2,8 +2,10 @@
 
 import numpy as np
 import cv2
-import glob
-import json
+from cv2 import aruco
+import general_robotics_toolbox as rox
+from RobotRaconteurCompanion.Util.ImageUtil import ImageUtil
+from RobotRaconteurCompanion.Util.GeometryUtil import GeometryUtil
 
 def rigid_transform_3D(A, B):
     # This function is taken from https://github.com/nghiaho12/rigid_transform_3D.git
@@ -55,47 +57,26 @@ def rigid_transform_3D(A, B):
 
     return R, t
 
-def calibrate(path_imgs, prefix, image_format, path_poses, saved_poses_filename, aruco_dict, aruco_id, aruco_markersize, mtx, dist):
+def calibrate(images, joint_poses, aruco_dict, aruco_id, aruco_markersize, flange_to_marker, mtx, dist, cam_pose, rox_robot, robot_local_device_name):
     """ Apply extrinsic camera calibration operation for images in the given directory path 
     using opencv aruco marker detection, the extrinsic marker poses given in a json file, 
     and the given intrinsic camera parameters."""
 
-    aruco_dict = eval(aruco_dict) # convert string to python
+    assert aruco_dict.startswith("DICT_"), "Invalid aruco dictionary name"
+
+    aruco_dict = getattr(aruco, aruco_dict) # convert string to python
     aruco_dict = cv2.aruco.Dictionary_get(aruco_dict)
     aruco_params = cv2.aruco.DetectorParameters_create()
 
+    pose_pairs_dict={}
+    i = 0
 
-    # Create a dictionary for pose pairs
-    # Structure of this disctionary is "filename":[[R_base2marker],[T_base2marker],[R_cam2marker],[T_cam2marker]]
-    pose_pairs_dict = {}
+    imgs_out = []
 
-    ## Read the poses file
-    if path_poses[-1:] == '/':
-        path_poses = path_poses[:-1]
+    geom_util = GeometryUtil()
+    image_util = ImageUtil()
 
-    with open(path_poses+'/'+saved_poses_filename, 'r') as fp:
-        saved_marker_poses_dict = json.load(fp) 
-    # Note: Convert every R and T into numpy array in the dictionary (stored as list currently)
-
-    # # debug
-    # print(str(type(saved_marker_poses_dict)))
-    # print(str(saved_marker_poses_dict))
-
-    ## Read images one by one
-    if path_imgs[-1:] == '/':
-        path_imgs = path_imgs[:-1]
-
-    if image_format[:1] == '.':
-        image_format = image_format[1:]
-
-    images = sorted(glob.glob(path_imgs+'/' + prefix + '*.' + image_format))
-
-    print(path_imgs+'/' + prefix + '*.' + image_format)
-    print(len(images))
-
-    for fname in images:
-        print(str(fname)) # debug
-        img = cv2.imread(fname)
+    for img,joints in zip(images,joint_poses):
         
         # Find the aruco tag corners
         # corners, ids, rejected = cv2.aruco.detectMarkers(img, aruco_dict, parameters=aruco_params,cameraMatrix=mtx, distCoeff=dist)
@@ -134,9 +115,11 @@ def calibrate(path_imgs, prefix, image_format, path_poses, saved_poses_filename,
 
                 # # Debug: Show the detected tag and axis in the image
                 # # # cv2.aruco.drawDetectedMarkers(img, corners)  # Draw A square around the markers (Does not work)
-                # cv2.aruco.drawAxis(img, mtx, dist, rvec, tvec, aruco_markersize*0.75)  # Draw Axis
-                # cv2.imshow(fname.split('/')[-1], img)
-                # cv2.waitKey(250)
+                img1 = img.copy()
+                img_out = cv2.aruco.drawAxis(img1, mtx, dist, rvec, tvec, aruco_markersize*0.75)  # Draw Axis
+                imgs_out.append(img_out)
+                # cv2.imshow("detected tag",img_out)
+                # cv2.waitKey()
 
                 # Convert tvec to one dimensional array, it was [[tvec]].
                 T_cam2marker = tvec[0].flatten() # in camera's frame
@@ -144,11 +127,18 @@ def calibrate(path_imgs, prefix, image_format, path_poses, saved_poses_filename,
                 R_cam2marker = cv2.Rodrigues(rvec[0])[0]
 
                 # Store the calculated marker pose pair
-                R_base2marker = np.asarray(saved_marker_poses_dict[fname.split('/')[-1]][0]) # Convert every R and T into numpy array in the dictionary
-                T_base2marker = np.asarray(saved_marker_poses_dict[fname.split('/')[-1]][1])
+                #R_base2marker = np.asarray(saved_marker_poses_dict[fname.split('/')[-1]][0]) # Convert every R and T into numpy array in the dictionary
+                #T_base2marker = np.asarray(saved_marker_poses_dict[fname.split('/')[-1]][1])
+
+                transform_base_2_flange = rox.fwdkin(rox_robot, joints)
+                transform_flange_2_marker = geom_util.pose_to_rox_transform(flange_to_marker)
+                transform_base_2_marker = transform_base_2_flange * transform_flange_2_marker
+                R_base2marker = transform_base_2_marker.R
+                T_base2marker = transform_base_2_marker.p
 
                 # Structure of this disctionary is "filename":[[R_base2marker],[T_base2marker],[R_cam2marker],[T_cam2marker]]
-                pose_pairs_dict[fname.split('/')[-1]] = [R_base2marker,T_base2marker,R_cam2marker,T_cam2marker]
+                pose_pairs_dict[i] = [R_base2marker,T_base2marker,R_cam2marker,T_cam2marker]
+                i+=1
     
     # cv2.destroyAllWindows() # Debug
     print("HERE") # debug
@@ -157,7 +147,7 @@ def calibrate(path_imgs, prefix, image_format, path_poses, saved_poses_filename,
     src_lst = []
     dst_lst = []
     
-    for filename, value in pose_pairs_dict.items():
+    for img_number, value in pose_pairs_dict.items():
         R_base2marker = value[0]
         T_base2marker = value[1]
         R_cam2marker = value[2]
@@ -197,9 +187,19 @@ def calibrate(path_imgs, prefix, image_format, path_poses, saved_poses_filename,
 
     # Finally execute the calibration
     R_cam2base,T_cam2base = rigid_transform_3D(src_arr.T,dst_arr.T)
+
+    # Add another display image of marker at robot base
+    img_out = cv2.aruco.drawAxis(img, mtx, dist, cv2.Rodrigues(R_cam2base)[0], T_cam2base, aruco_markersize*0.75)  # Draw Axis
+    imgs_out.append(img_out)
     
-    R_base2cam = R_cam2base.T
-    T_base2cam = - R_base2cam @ T_cam2base
+    rox_transform_cam2base = rox.Transform(R_cam2base,T_cam2base,cam_pose.parent_frame_id,robot_local_device_name)
+    rox_transform_world2base = cam_pose * rox_transform_cam2base
+
+    #R_base2cam = R_cam2base.T
+    #T_base2cam = - R_base2cam @ T_cam2base
+
+    R_base2cam = rox_transform_world2base.inv().R
+    T_base2cam = rox_transform_world2base.inv().p
     
     #debug
     print("FINAL RESULTS: ")
@@ -217,4 +217,9 @@ def calibrate(path_imgs, prefix, image_format, path_poses, saved_poses_filename,
     # print(str(type(T_base2cam.flatten())))
     print(str(T_base2cam))
     
-    return [R_cam2base,T_cam2base.flatten(),R_base2cam,T_base2cam.flatten()]
+    pose_res = geom_util.rox_transform_to_named_pose(rox_transform_world2base)
+    cov = np.eye(6) * 1e-5
+
+    imgs_out2 = [image_util.array_to_compressed_image_jpg(i,70) for i in imgs_out]
+
+    return pose_res, cov, imgs_out2, 0.0

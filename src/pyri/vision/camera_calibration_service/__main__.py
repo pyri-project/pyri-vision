@@ -70,7 +70,7 @@ def _calibrate_camera_intrinsic2(images,board):
 
     for image in images:
                 
-        frame = image_util.image_to_array(image)
+        frame = image_util.compressed_image_to_array(image)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         # Find the chess board corners
@@ -138,7 +138,7 @@ def _calibrate_camera_extrinsic(intrinsic_calib, image, board, camera_local_devi
     dist = np.array([dist_rr.k1, dist_rr.k2, dist_rr.p1, dist_rr.p2, dist_rr.k3],dtype=np.float64)
 
     image_util = ImageUtil()
-    frame = image_util.image_to_array(image)
+    frame = image_util.compressed_image_to_array(image)
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
     if board == "chessboard":
@@ -177,7 +177,8 @@ def _calibrate_camera_extrinsic(intrinsic_calib, image, board, camera_local_devi
     T = rox.Transform(R_cam,p_cam,"world",camera_local_device_name)
 
     geom_util = GeometryUtil()
-    return geom_util.rox_transform_to_named_pose(T), image_util.array_to_compressed_image_jpg(cv_image2), 0.0
+    cov = np.eye(6) * 1e-5
+    return geom_util.rox_transform_to_named_pose(T), cov, image_util.array_to_compressed_image_jpg(cv_image2), 0.0
 class CameraCalibrationService_impl:
     def __init__(self, device_manager_url, device_info = None, node : RR.RobotRaconteurNode = None):
         if node is None:
@@ -232,7 +233,7 @@ class CameraCalibrationService_impl:
                 {"device": camera_local_device_name}, variable_persistence["const"], None, variable_protection_level["read_write"], \
                 [], f"Camera \"{camera_local_device_name}\" intrinsic calibration", False)
 
-        ret = RRN.NewStructure("tech.pyri.vision.calibration.CameraCablibrateIntrinsicResult")
+        ret = RRN.NewStructure("tech.pyri.vision.calibration.CameraCalibrateIntrinsicResult")
         ret.calibration = camera_calib
         ret.display_images = imgs
         ret.calibration_error = calibration_error
@@ -255,15 +256,19 @@ class CameraCalibrationService_impl:
         image = var_storage.getf_variable_value("globals",image_global_name).data
         intrinsic_calib = var_storage.getf_variable_value("globals",camera_intrinsic_calibration_global_name).data
 
-        camera_pose, img, calibration_error = _calibrate_camera_extrinsic(intrinsic_calib, image, origin_calibration_target, camera_local_device_name)
+        camera_pose1, camera_pose_cov, img, calibration_error = _calibrate_camera_extrinsic(intrinsic_calib, image, origin_calibration_target, camera_local_device_name)
+
+        camera_pose = self._node.NewStructure("com.robotraconteur.geometry.NamedPoseWithCovariance")
+        camera_pose.pose = camera_pose1
+        camera_pose.covariance = camera_pose_cov
         
         if len(output_global_name) > 0:
-            var_storage.add_variable2("globals",output_global_name,"com.robotraconteur.geometry.NamedPose", \
-                RR.VarValue(camera_pose,"com.robotraconteur.geometry.NamedPose"), ["camera_calibration_extrinsic"], 
+            var_storage.add_variable2("globals",output_global_name,"com.robotraconteur.geometry.NamedPoseWithCovariance", \
+                RR.VarValue(camera_pose,"com.robotraconteur.geometry.NamedPoseWithCovariance"), ["camera_calibration_extrinsic"], 
                 {"device": camera_local_device_name}, variable_persistence["const"], None, variable_protection_level["read_write"], \
                 [], f"Camera \"{camera_local_device_name}\" extrinsic calibration", False)
 
-        ret = RRN.NewStructure("tech.pyri.vision.calibration.CameraCablibrateExtrinsicResult")
+        ret = RRN.NewStructure("tech.pyri.vision.calibration.CameraCalibrateExtrinsicResult")
         ret.camera_pose = camera_pose
         ret.display_image = img
         ret.calibration_error = calibration_error
