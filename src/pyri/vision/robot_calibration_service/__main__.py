@@ -51,7 +51,7 @@ class CameraRobotCalibrationService_impl(object):
     def _device_removed(self, local_device_name):
         pass
 
-    def calibrate_robot_base(self, robot_local_device_name, camera_intrinsic_calibration_global_name, camera_extrinsic_calibration_global_name, \
+    def calibrate_robot_origin(self, robot_local_device_name, camera_intrinsic_calibration_global_name, camera_extrinsic_calibration_global_name, \
         image_sequence_global_name, aruco_dict, aruco_id, aruco_markersize, flange_to_marker, output_global_name):
         
 
@@ -105,7 +105,7 @@ class CameraRobotCalibrationService_impl(object):
 
         if len(output_global_name) > 0:
             var_storage.add_variable2("globals",output_global_name,"com.robotraconteur.geometry.NamedPoseWithCovariance", \
-                RR.VarValue(robot_pose,"com.robotraconteur.geometry.NamedPoseWithCovariance"), ["robot_base_pose_calibration"], 
+                RR.VarValue(robot_pose,"com.robotraconteur.geometry.NamedPoseWithCovariance"), ["robot_origin_pose_calibration"], 
                 {"device": robot_local_device_name}, variable_persistence["const"], None, variable_protection_level["read_write"], \
                 [], f"Robot \"{robot_local_device_name}\" base pose calibration", False)
 

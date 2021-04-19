@@ -25,7 +25,7 @@ object CameraRobotCalibrationService
     implements Device
     property DeviceInfo device_info [readonly,nolock]
     
-    function CameraRobotBaseCalibrateResult calibrate_robot_base(string robot_local_device_name, string camera_intrinsic_calibration_global_name, \
+    function CameraRobotBaseCalibrateResult calibrate_robot_origin(string robot_local_device_name, string camera_intrinsic_calibration_global_name, \
         string camera_extrinsic_calibration_global_name, string image_sequence_global_name, string aruco_dict, int32 aruco_id, \
         double aruco_markersize, Pose flange_to_marker, string output_global_name)
 
