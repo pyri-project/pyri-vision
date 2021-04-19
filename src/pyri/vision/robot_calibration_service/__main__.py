@@ -107,7 +107,7 @@ class CameraRobotCalibrationService_impl(object):
             var_storage.add_variable2("globals",output_global_name,"com.robotraconteur.geometry.NamedPoseWithCovariance", \
                 RR.VarValue(robot_pose,"com.robotraconteur.geometry.NamedPoseWithCovariance"), ["robot_origin_pose_calibration"], 
                 {"device": robot_local_device_name}, variable_persistence["const"], None, variable_protection_level["read_write"], \
-                [], f"Robot \"{robot_local_device_name}\" base pose calibration", False)
+                [], f"Robot \"{robot_local_device_name}\" origin pose calibration", False)
 
         ret = RRN.NewStructure("tech.pyri.vision.robot_calibration.CameraRobotBaseCalibrateResult")
         ret.robot_pose = robot_pose
