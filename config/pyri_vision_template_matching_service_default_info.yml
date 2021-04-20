@@ -1,0 +1,19 @@
+device:
+  name: pyri_template_matching__service
+manufacturer:
+  name: PyRI_Project
+  uuid: 244389f3-35d5-4f9f-a244-c89649ce2a18
+model:
+  name: pyri_vision_template_matching_service
+  uuid: 53b5ad04-c18d-4de7-87ce-a211189694d7
+user_description: Vision based template matching service
+serial_number: 1
+device_classes:
+  - class_identifier:
+      name: pyri_vision
+      uuid: 940ab344-672d-4086-80b7-91ab792bf2c8
+    subclasses:
+      - template_matching
+implemented_types:
+  - com.robotraconteur.device.Device
+  - tech.pyri.vision.template_matching.VisionTemplateMatchingService
