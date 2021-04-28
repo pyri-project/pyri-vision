@@ -1,0 +1,19 @@
+device:
+  name: pyri_aruco_detection_service
+manufacturer:
+  name: PyRI_Project
+  uuid: 244389f3-35d5-4f9f-a244-c89649ce2a18
+model:
+  name: pyri_vision_aruco_detection_service
+  uuid: c209e9e9-95d1-4f16-981a-ecb844f5e662
+user_description: Vision Aruco marker detection service
+serial_number: 1
+device_classes:
+  - class_identifier:
+      name: pyri_vision
+      uuid: 940ab344-672d-4086-80b7-91ab792bf2c8
+    subclasses:
+      - aruco_marker_detection
+implemented_types:
+  - com.robotraconteur.device.Device
+  - tech.pyri.vision.template_matching.ArucoMarkerDetectionService

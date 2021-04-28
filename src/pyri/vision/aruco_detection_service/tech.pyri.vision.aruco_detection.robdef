@@ -1,0 +1,43 @@
+service tech.pyri.vision.aruco_detection
+
+stdver 0.10
+
+import com.robotraconteur.device
+import com.robotraconteur.image
+import com.robotraconteur.geometry
+
+using com.robotraconteur.device.Device
+using com.robotraconteur.device.DeviceInfo
+using com.robotraconteur.image.CompressedImage
+using com.robotraconteur.geometry.Pose2D
+using com.robotraconteur.geometry.Point2D
+using com.robotraconteur.geometry.Pose
+using com.robotraconteur.geometry.NamedPose
+using com.robotraconteur.geometry.BoundingBox2D
+
+struct DetectedMarker
+    field uint32 marker_id
+    field Point2D[4] marker_corners
+    field NamedPose marker_pose
+end
+
+struct ArucoDetectionResult
+    field DetectedMarker{list} detected_markers
+    field CompressedImage display_image
+end
+
+object VisionArucoDetectionService
+    implements Device
+
+    property DeviceInfo device_info [readonly,nolock]
+    
+    # camera_calibration null for no pose computation. marker_id = -1 for all ids
+    function ArucoDetectionResult detect_aruco_stored_image(string image_global_name, \
+        string camera_calibration_intrinsic, string camera_calibration_extrinsic, string aruco_dict, \
+        int32 aruco_id, double aruco_markersize, BoundingBox2D roi)
+
+    # camera_calibration null for no pose computation. marker_id = -1 for all ids
+    function ArucoDetectionResult detect_aruco_camera_capture(string camera_local_device_name, \
+        string camera_calibration_intrinsic, string camera_calibration_extrinsic, string aruco_dict, \
+        int32 aruco_id, double aruco_markersize, BoundingBox2D roi)
+end

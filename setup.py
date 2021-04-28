@@ -13,7 +13,10 @@ setup(
     zip_safe=False,
     install_requires=[
         'pyri-common',
-        'opencv-contrib-python'
+        'opencv-contrib-python',
+        'shapely',
+        'RobotRaconteur',
+        'RobotRaconteurCompanion'
     ],
     tests_require=['pytest','pytest-asyncio'],
     extras_require={
