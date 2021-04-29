@@ -1,5 +1,5 @@
 device:
-  name: pyri_template_matching__service
+  name: pyri_template_matching_service
 manufacturer:
   name: PyRI_Project
   uuid: 244389f3-35d5-4f9f-a244-c89649ce2a18

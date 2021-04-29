@@ -128,6 +128,8 @@ class VisionArucoDetection_impl(object):
             for id4,corner4 in zip(ids,corners):
                 rvec, tvec, markerPoints = cv2.aruco.estimatePoseSingleMarkers(corner4, aruco_markersize, mtx, dist)
 
+                display_img = cv2.aruco.drawAxis(display_img,mtx,dist,rvec,tvec,0.05)
+
                 R_marker1 = cv2.Rodrigues(rvec.flatten())[0]
                 p_marker1 = tvec.flatten()
 

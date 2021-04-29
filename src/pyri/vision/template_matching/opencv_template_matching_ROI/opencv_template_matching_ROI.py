@@ -3,6 +3,10 @@ import cv2
 import math
 # from matplotlib import pyplot as plt
 
+import shapely
+import shapely.geometry
+
+
 class RRect_center:
   def __init__(self, p0, s, S, ang):
     (self.W, self.H) = s # rotated image width and height
@@ -34,22 +38,107 @@ class RRect_center:
     # cv2.line(image, (self.verts[3][0], self.verts[3][1]), (self.verts[0][0], self.verts[0][1]), (0,255,0), 2)
     cv2.line(image, (self.verts[3][0], self.verts[3][1]), (self.verts[0][0], self.verts[0][1]), colors[3], 2)
 
-class TemplateMatchingMultiAngle(object):
-    def __init__(self, template_img, camera_img):
+class TemplateMatchingMultiAngleWithROI(object):
+    def __init__(self, template_img, camera_img, ROI_parameters = None, min_ROI_intersection_area = 20.0):
+        # INPUTs:
+        #   template_img: image of the object that we try to find in the camera_img
+        #   camera_img: image that we trying to find the object in it
+        #   ROI_parameters: A tuple that defines ROI in the image for template matching to be done (x,y,w,h,theta)
+        #       x,y: center coordinates of the ROI (float) in image coordinates
+        #       w,h: width and height of the ROI (float)
+        #       theta: CCW rotation angle of the ROI (degree, float)
+        #   min_ROI_intersection_area: minimum intersection area btw. ROI and the image for ROI to be acceptible.
+
         self.template_img = template_img
         self.camera_img = camera_img
 
+        # Define ROI related parameters
+        if ROI_parameters == None: 
+            # camera_img itself is the region of interest
+            (h, w) = self.camera_img.shape[:2]
+            (cX, cY) = (w / 2, h / 2)
+            self.ROI_x = cX
+            self.ROI_y = cY
+            self.ROI_w = w
+            self.ROI_h = h
+            self.ROI_theta = 0.0
+        else:
+            # ROI is defined by the user
+            self.ROI_x = ROI_parameters[0]
+            self.ROI_y = ROI_parameters[1]
+            self.ROI_w = ROI_parameters[2]
+            self.ROI_h = ROI_parameters[3]
+            self.ROI_theta = ROI_parameters[4]
+
+        # define camera_img rectangle geometrically in image frame
+        # shapely.geometry.box(minx, miny, maxx, maxy, ccw=True)
+        (h, w) = self.camera_img.shape[:2]
+        self.geom_camera_img = shapely.geometry.box(0.0,-h,w,0.0,ccw=True)
+        
+        # define ROI rectangle geometrically
+        self.geom_ROI = shapely.geometry.box(-self.ROI_w/2.,-self.ROI_h/2.,self.ROI_w/2.,self.ROI_h/2.,ccw=True)
+        # translate the ROI to its defined centroid position in image frame
+        self.geom_ROI = shapely.affinity.translate(self.geom_ROI, xoff = self.ROI_x, yoff = -self.ROI_y)
+        # rotate the ROI as defined around its centroid CCW
+        self.geom_ROI = shapely.affinity.rotate(self.geom_ROI, self.ROI_theta, origin='centroid', use_radians=True)
+
+        # define ROI and camera_img intersection geometrically
+        self.geom_intersection = self.geom_camera_img.intersection(self.geom_ROI)
+        
+        # Assert that the defined ROI is acceptible (i.e the min. intersection area within the ROI and camera_img is more than a threshold value)
+        self.min_intersection_area = min_ROI_intersection_area
+        
+        assert self.geom_intersection.area >= self.min_intersection_area, "ROI intersection with Image is not large enough!"
+
+        # export intersection polygon coodinates as our final ROI
+        self.ROI_coords = np.array(self.geom_intersection.exterior.coords,dtype=np.int32)
+        # Convert polygon coordinates into image frame
+        self.ROI_coords[:,1] = -self.ROI_coords[:,1]
+
+        # Create a mask for camera_img
+        self.ROI_mask = np.zeros(self.camera_img.shape, dtype=np.uint8)
+
+        channel_count = self.camera_img.shape[2]  # i.e. 3 or 4 depending on your image
+        ignore_mask_color = (255,)*channel_count
+        cv2.fillConvexPoly(self.ROI_mask, self.ROI_coords, ignore_mask_color)
+        # cv2.fillConvexPoly if you know it's convex, otherwise use cv2.fillPoly
+
+        # apply the mask
+        self.masked_image = cv2.bitwise_and(self.camera_img, self.ROI_mask)
+
+        # # save the result
+        # cv2.imwrite('image_masked.png', self.masked_image)
+
+        # Find ROI bounding box as (minx, miny, maxx, maxy)
+        self.ROI_bbox = np.array(self.geom_intersection.bounds, dtype=np.int32)
+
+        # define ROI bounding box rectangle geometrically
+        self.geom_ROI_bbox = shapely.geometry.box(self.ROI_bbox[0],self.ROI_bbox[1],self.ROI_bbox[2],self.ROI_bbox[3],ccw=True)
+
+        # Convert bounding box coordinates into image frame
+        self.ROI_bbox[[1,3]] = -self.ROI_bbox[[3,1]]
+
+        # Lets crop the intersection are from the image
+        self.masked_cropped_image = self.masked_image[self.ROI_bbox[1]:self.ROI_bbox[3],self.ROI_bbox[0]:self.ROI_bbox[2]]
+
+        # # save the result
+        # cv2.imwrite('masked_cropped_image.png', self.masked_cropped_image)
+
+        self.ROI_bbox_w = self.ROI_bbox[2]-self.ROI_bbox[0]
+        self.ROI_bbox_h = self.ROI_bbox[3]-self.ROI_bbox[1]
+
+        # Define template matching parameters
         self.max_angle = 180.0 # degree
         self.min_angle = -180.0 # degree
         self.num_angles = 19 # number of different angles (has to be integer)
 
         # There are 6 Template Matching methods 
-        # self.method = cv2.TM_CCOEFF
-        # self.method = cv2.TM_CCOEFF_NORMED 
-        self.method = cv2.TM_CCORR # Seems to be best w/out canny
-        # self.method = cv2.TM_CCORR_NORMED
-        # self.method = cv2.TM_SQDIFF
-        # self.method = cv2.TM_SQDIFF_NORMED
+        # self.method = cv2.TM_CCOEFF # good
+        self.method = cv2.TM_CCOEFF_NORMED  # best
+        # self.method = cv2.TM_CCORR # not good # Seems to be best w/out canny
+        # self.method = cv2.TM_CCORR_NORMED # second best
+        # self.method = cv2.TM_SQDIFF # terrible
+        # self.method = cv2.TM_SQDIFF_NORMED # terrible
     
         self.show_visuals = False
 
@@ -95,7 +184,7 @@ class TemplateMatchingMultiAngle(object):
         if self.show_visuals:
             # Show template to the user 
             # cv2.imshow("Template", np.array(template, dtype = np.uint8 ))
-            cv2.imshow("Template", self.template)
+            cv2.imshow("Template", template)
             cv2.waitKey(0)
 
         #sizes of the original template
@@ -123,6 +212,10 @@ class TemplateMatchingMultiAngle(object):
         self.w_max = max(self.template_widths) 
         self.tH, self.tW = self.h_max, self.w_max
 
+        # Assert that the template images are smaller than the masked cropped image
+        assert self.ROI_bbox_w >= self.tW, "Template Image width should be less than width of searched image ROI!"
+        assert self.ROI_bbox_h >= self.tH, "Template Image height should be less than height of searched image ROI!"
+
         # Pad template images according so that all have the same size
         # self.template_pixel_counts = []
         for i,img in enumerate(self.templates):
@@ -134,7 +227,7 @@ class TemplateMatchingMultiAngle(object):
             self.templates[i] = cv2.copyMakeBorder(img,top,bottom,left,right,cv2.BORDER_CONSTANT,None,[0,0,0])
             img_name = "debug_rotate_template_angle_{}_padded.png".format(self.template_angles[i])
             # cv2.imwrite(img_name, templates[i])
-            print(img_name, self.templates[i].shape)
+            # print(img_name, self.templates[i].shape)
             # # Save number of non-zero pixels in the rotated template to normalize later
             # self.template_pixel_counts.append(cv2.countNonZero(self.templates[i]))
 
@@ -142,7 +235,12 @@ class TemplateMatchingMultiAngle(object):
         found = None
         r = 1.0 # Size ratio between original template and the resized template (orginal/resized)
 
-        gray = cv2.cvtColor(self.camera_img, cv2.COLOR_BGR2GRAY) # This may not be necessary since opencv can handle rgb images directly for canny edge detection today (09jan2021) But converting to gray helps for faster template matching so keep it 
+        # gray = cv2.cvtColor(self.camera_img, cv2.COLOR_BGR2GRAY) # This may not be necessary since opencv can handle rgb images directly for canny edge detection today (09jan2021) But converting to gray helps for faster template matching so keep it 
+        gray = cv2.cvtColor(self.masked_cropped_image, cv2.COLOR_BGR2GRAY) # This may not be necessary since opencv can handle rgb images directly for canny edge detection today (09jan2021) But converting to gray helps for faster template matching so keep it 
+        # gray = cv2.equalizeHist(gray) # You can comment out this, not really improves accuracy
+        # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        # gray = clahe.apply(gray)
+
         # gray  = img
 
         # gray = cv2.GaussianBlur(gray,(5,5),0)
@@ -152,7 +250,9 @@ class TemplateMatchingMultiAngle(object):
         gray = self.auto_canny(gray)
         
         if self.show_visuals or return_result_image:
-            img_copy = self.camera_img.copy() # Copy original image to keep the original just in case
+            # img_copy = self.camera_img.copy() # Copy original image to keep the original just in case
+            img_copy = self.masked_cropped_image.copy() # Copy original image to keep the original just in case
+            
 
         # Loop over the rotated images
         for i,template in enumerate(self.templates):
@@ -211,7 +311,9 @@ class TemplateMatchingMultiAngle(object):
 
         
         # return center coordinates of the detected object;  w,h of the detected object in image; orientation angle in degrees
-        self.center = (int(P0[0]+W/2.0),int(P0[1]+H/2.0)) # center point coordinates
+        # self.center = (int(P0[0]+W/2.0),int(P0[1]+H/2.0)) # center point coordinates
+        self.center = (int(P0[0]+W/2.0+self.ROI_bbox[0]),int(P0[1]+H/2.0+self.ROI_bbox[1])) # center point coordinates in original image frame!
+
         self.wh = (w,h) # widht and height of the detected object in image
         self.angle = angle # orientation angle in degrees
         

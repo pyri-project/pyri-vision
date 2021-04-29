@@ -1,178 +1,126 @@
 import sys
 import RobotRaconteur as RR
 RRN=RR.RobotRaconteurNode.s
-from RobotRaconteur.Client import *     #import RR client library to connect 
 import numpy as np
 
 import cv2
-import math 
+import math
+import argparse
+import RobotRaconteurCompanion as RRC
+from pyri.device_manager_client import DeviceManagerClient
+import importlib.resources as resources
+from RobotRaconteurCompanion.Util.InfoFileLoader import InfoFileLoader
+from RobotRaconteurCompanion.Util.AttributesUtil import AttributesUtil
+from RobotRaconteurCompanion.Util.RobotUtil import RobotUtil
+from RobotRaconteurCompanion.Util.IdentifierUtil import IdentifierUtil
+from RobotRaconteurCompanion.Util.ImageUtil import ImageUtil
+from RobotRaconteurCompanion.Util.GeometryUtil import GeometryUtil
 
-from opencv_template_matching import TemplateMatchingMultiAngle
+from .opencv_template_matching_ROI import TemplateMatchingMultiAngleWithROI
 
-class CameraTracking_impl(object):
-    def __init__(self):
-        self.url_plugins_vision_lst = [] # The order will be :
-        # url_plugin_cameraFeedback, url_plugin_cameraTraining, url_plugin_cameraCalibration
-        self.plugin_cameraFeedback = None
-        self.plugin_cameraTraining = None
-        self.plugin_cameraCalibration = None
-        self.is_plugins_connected = False
-
-        self.camera_name_url_dict = {} # Dictionary for connected camera urls(key:node names)
-        self.camera_objs_dict = {} # Dictionary for connected camera objects(key:node names)
-        self.is_cameras_connected = False
-
-        self._image_consts = RRN.GetConstants('com.robotraconteur.image')
-        self._image_info_type = RRN.GetStructureType('com.robotraconteur.image.ImageInfo')
-        self._compressed_image_type = RRN.GetStructureType('com.robotraconteur.image.CompressedImage')
-
-        
-    def reset_vision_plugins(self):
-        self.url_plugins_vision_lst = [] 
-        
-        self.plugin_cameraFeedback = None
-        self.plugin_cameraTraining = None
-        self.plugin_cameraCalibration = None
-        self.plugin_cameraTracking = None    
-        self.is_plugins_connected = False
-
-    def reset_connected_cameras(self):
-        self.camera_name_url_dict = {} # Dictionary for connected camera urls(key:node names)
-        self.camera_objs_dict = {} # Dictionary for connected camera objects(key:node names)
-        self.is_cameras_connected = False
-
-    # Make camera tracking connect to all vision plugins as well so that it can reach the inner files of those services with their permit
-    def connect2plugins_vision(self, url_plugins_vision_lst):
-        if not self.is_plugins_connected: # if the list is empty
-            self.url_plugins_vision_lst = url_plugins_vision_lst # append the new urls
-            # self.url_plugins_vision_lst = list(set(self.url_plugins_vision_lst)) # keep only the unique urls, prevent adding the same urls again
-            print("vision plugin urls:")
-            print(self.url_plugins_vision_lst)
-
-            self.plugin_cameraFeedback = RRN.ConnectService(self.url_plugins_vision_lst[0])
-            self.plugin_cameraTraining = RRN.ConnectService(self.url_plugins_vision_lst[1])
-            self.plugin_cameraCalibration = RRN.ConnectService(self.url_plugins_vision_lst[2])
-            self.is_plugins_connected = True
+class VisionTemplateMatching_impl(object):
+    def __init__(self, device_manager_url, device_info = None, node: RR.RobotRaconteurNode = None):
+        if node is None:
+            self._node = RR.RobotRaconteurNode.s
         else:
-            # Give an error that says the vision plugins are already connected
-            print("Vision plugins are already connected to CameraTracking service! Trying to connect again..")
-            self.reset_vision_plugins()
-            self.connect2plugins_vision(url_plugins_vision_lst)
+            self._node = node
+        self.device_info = device_info
+                
+        self.service_path = None
+        self.ctx = None
 
-    # Make tracking plugin to connect to all cameras and make it get the all corresponding camera (node) names
-    def connect2all_cameras(self, camera_connection_urls_lst, camera_node_names_lst):
-        if not self.is_cameras_connected: # if the dictionary is empty
-            self.camera_name_url_dict = dict(zip(camera_node_names_lst,camera_connection_urls_lst)) 
+        self._matched_template_2d_type = self._node.GetStructureType("tech.pyri.vision.template_matching.MatchedTemplate2D")
+        self._template_matching_result_2d_type = self._node.GetStructureType("tech.pyri.vision.template_matching.TemplateMatchingResult2D")
+        self._template_matching_result_3d_type = self._node.GetStructureType("tech.pyri.vision.template_matching.TemplateMatchingResult3D")
+        self._matched_template_3d_type = self._node.GetStructureType("tech.pyri.vision.template_matching.MatchedTemplate3D")
+        self._named_pose_with_covariance_type = self._node.GetStructureType("com.robotraconteur.geometry.NamedPoseWithCovariance")
+        self._pose2d_dtype = self._node.GetNamedArrayDType("com.robotraconteur.geometry.Pose2D")
 
-            for camera_name, camera_url in self.camera_name_url_dict.items():
-                # connect to the camera service url
-                camera_obj = RRN.ConnectService(camera_url) # connect to cam with given url
-                # add the connected camera object to camera object dictionary
-                self.camera_objs_dict[camera_name] = camera_obj
+        self._image_util = ImageUtil(node=self._node)
+        self._geom_util = GeometryUtil(node=self._node)
 
-            self.is_cameras_connected = True
-            # log that the cameras are successfully connected
-            print("All cameras are connected to CameraTracking service!")
-
-            # TODO: For assigning camera parameters etc
-            self.assign_camera_details()
-
-        else:
-            # Give an error that says the vision plugins are already connected
-            print("Cameras are already connected to CameraTracking service! Trying to connect again..")
-            self.reset_connected_cameras()
-            self.connect2all_cameras(camera_connection_urls_lst, camera_node_names_lst)
-
-    def assign_camera_details(self):
-        if self.is_plugins_connected and self.is_cameras_connected :
-            # TODO: Later it can be used for storing camera parameters etc
-            pass
-        else:
-            # Give an error message to show that the robot is not connected
-            print("Assign camera details failed. Cameras or plugins are not connected to CameraTracking service yet!")
-
-    def WebcamImageToMat(self, image):
-        frame2=image.data.reshape([image.image_info.height, image.image_info.width, 3], order='C')
-        return frame2
-
-    def _cv_mat_to_compressed_image(self, mat, quality = 100):
-        is_mono = False
-        if (len(mat.shape) == 2 or mat.shape[2] == 1):
-            is_mono = True
-
-        image_info = self._image_info_type()
-        image_info.width =mat.shape[1]
-        image_info.height = mat.shape[0]
+        self.device_manager = DeviceManagerClient(device_manager_url)
+        self.device_manager.device_added += self._device_added
+        self.device_manager.device_removed += self._device_removed
+        self.device_manager.refresh_devices(5)
         
-        image_info.step = 0
-        image_info.encoding = self._image_consts["ImageEncoding"]["compressed"]
+    def RRServiceObjectInit(self, ctx, service_path):
+        self.service_path = service_path
+        self.ctx = ctx
         
-        image = self._compressed_image_type()
-        image.image_info = image_info
-        res, encimg = cv2.imencode(".jpg",mat,[int(cv2.IMWRITE_JPEG_QUALITY), quality])
-        assert res, "Could not compress frame!"
-        image.data=encimg
-        return image
+    def _device_added(self, local_device_name):
+       pass 
 
-    def find_object_in_img_frame(self, obj_img_filename, camera_name, return_result_image):
-        if self.is_plugins_connected and self.is_cameras_connected :
-            # print("We are in DEBUG")
+    def _device_removed(self, local_device_name):
+        pass
 
-            # Load img from the given filename
-            # Use cameraTraining plugin image load function
-            img_obj = self.plugin_cameraTraining.load_image(obj_img_filename) # this returns RR image object
-            img_obj = self.WebcamImageToMat(img_obj) # convert RR image object to cv image object
+    def match_template_stored_image(self, image_global_name, template_global_name, roi):
+       
+        var_storage = self.device_manager.get_device_client("variable_storage",1)
 
-            # #Show the filed template image
-            # cv2.imshow(obj_img_filename,img_obj)
-            # cv2.waitKey(0)
+        image_var = var_storage.getf_variable_value("globals", image_global_name)
+        image = self._image_util.compressed_image_to_array(image_var.data)
 
-            # capture image from the given camera_name 
-            camera = self.camera_objs_dict[camera_name]# camera object
-            img_compressed_cam = camera.capture_frame_compressed() # get the camera img as RR image
-            img_compressed_cam = cv2.imdecode(img_compressed_cam.data,1) # convert it to cv image
+        template_var = var_storage.getf_variable_value("globals", template_global_name)
+        template = self._image_util.compressed_image_to_array(template_var.data)
 
-            # cv2.imshow(camera_name,img_compressed_cam)
-            # cv2.waitKey(0)
-            # cv2.destroyAllWindows()
+        return self._do_template_match(template, image, roi)
 
-            # get the camera parameters from camera calibration (later) TODO
+    def match_template_camera_capture(self, camera_local_device_name, template_global_name, roi):
+       
+        var_storage = self.device_manager.get_device_client("variable_storage",1)
+        
+        template_var = var_storage.getf_variable_value("globals", template_global_name)
+        template = self._image_util.compressed_image_to_array(template_var.data)
 
-            # execute the image detection using opencv
-            matcher = TemplateMatchingMultiAngle(img_obj,img_compressed_cam)
-            # return_result_image = True
-            if return_result_image:
-                self.center, self.wh, self.angle, self.detection_result_img = matcher.detect_object(return_result_image)
-            else:
-                self.center, self.wh, self.angle = matcher.detect_object()
-                self.detection_result_img = None
-            
-            # return the pose of the object
-            print("the object is found..:")
-            print("center coordinates in img frame(x,y): " + str(self.center))
-            print("(w,h): " + str(self.wh))
-            print("angle: " + str(self.angle))
+        camera_device = self.device_manager.get_device_client(camera_local_device_name)
+        image_compressed = camera_device.capture_frame_compressed()
+        image = self._image_util.compressed_image_to_array(image_compressed)
+
+        return self._do_template_match(template, image, roi)
+
+    def _do_template_match(self, template, image, roi):
+
+        matcher_roi = None
+
+        if roi is not None:
+            roi_x = roi.center.pose[0]["position"]["x"]
+            roi_y = roi.center.pose[0]["position"]["y"]
+            roi_theta = roi.center.pose[0]["orientation"]
+            roi_w = roi.size[0]["width"]
+            roi_h = roi.size[0]["height"]
+            matcher_roi = (roi_x, roi_y, roi_w, roi_h, -roi_theta)
 
 
-            # Pack the results into DetectedObject structure
-            detection_result = RRN.NewStructure("experimental.pluginCameraTracking.DetectedObject")
-            detection_result.width = self.wh[0]
-            detection_result.height = self.wh[1]
-            detection_result.center_x = self.center[0]
-            detection_result.center_y = self.center[1]
-            detection_result.angle = self.angle
+        # execute the image detection using opencv
+        matcher = TemplateMatchingMultiAngleWithROI(template,image,matcher_roi)
+        # return_result_image = True
+        
+        match_center, template_wh, match_angle, detection_result_img = matcher.detect_object(True)
+                
+        # return the pose of the object
+        print("the object is found..:")
+        print("center coordinates in img frame(x,y): " + str(match_center))
+        print("(w,h): " + str(template_wh))
+        print("angle: " + str(match_angle))
 
-            if self.detection_result_img is not None:
-                # Convert opencv result image to compressed RR image
-                detection_result.result_img = self._cv_mat_to_compressed_image(self.detection_result_img, 70)
-            else:
-                detection_result.result_img = None
 
-            return detection_result
+        match_result = self._template_matching_result_2d_type()
 
-        else:
-            # Give an error message to show that the robot is not connected
-            print("Cameras or plugins are not connected to CameraTracking service yet!")
+        matched_template_result = self._matched_template_2d_type()
+        centroid = np.zeros((1,),dtype=self._pose2d_dtype)
+        centroid[0]["position"]["x"] = match_center[0]
+        centroid[0]["position"]["y"] = match_center[1]
+        centroid[0]["orientation"] = match_angle
+        matched_template_result.match_centroid = centroid
+        matched_template_result.template_size = self._geom_util.wh_to_size2d(template_wh,dtype=np.int32)
+        matched_template_result.confidence = 0
+
+        match_result.template_matches =[matched_template_result]
+
+        match_result.display_image = self._image_util.array_to_compressed_image_jpg(detection_result_img, 70)
+
+        return match_result
 
     def find_object_pose_in_cam_frame(self,obj_img_filename, camera_name, value_z_distance):
         if self.is_plugins_connected and self.is_cameras_connected:
@@ -233,29 +181,54 @@ class CameraTracking_impl(object):
 
         else:
             # Give an error message to show that the robot is not connected
-            print("Cameras or plugins are not connected to CameraTracking service yet!")
+            print("Cameras or plugins are not connected to VisionTemplateMatching service yet!")
 
 
 
 
 def main():
-    # RR.ServerNodeSetup("NodeName", TCP listen port, optional set of flags as parameters)
-    with RR.ServerNodeSetup("experimental.plugin-cameraTracking-service", 8898) as node_setup:
 
-        # register service type
-        # RRN.RegisterServiceTypeFromFile("./experimental.pluginCameraTracking")
-        RRN.RegisterServiceTypesFromFiles(['com.robotraconteur.image',"./experimental.pluginCameraTracking"],True)
+    parser = argparse.ArgumentParser(description="PyRI Vision Template Matching Service")    
+    parser.add_argument("--device-info-file", type=argparse.FileType('r'),default=None,required=True,help="Device info file for template matching service (required)")
+    parser.add_argument('--device-manager-url', type=str, default=None,required=True,help="Robot Raconteur URL for device manager service (required)")
+    parser.add_argument("--wait-signal",action='store_const',const=True,default=False, help="wait for SIGTERM or SIGINT (Linux only)")
+
+    args, _ = parser.parse_known_args()
+
+    RRC.RegisterStdRobDefServiceTypes(RRN)
+    RRN.RegisterServiceType(resources.read_text(__package__,'tech.pyri.vision.template_matching.robdef'))
+
+    with args.device_info_file:
+        device_info_text = args.device_info_file.read()
+
+    info_loader = InfoFileLoader(RRN)
+    device_info, device_ident_fd = info_loader.LoadInfoFileFromString(device_info_text, "com.robotraconteur.device.DeviceInfo", "device")
+
+    attributes_util = AttributesUtil(RRN)
+    device_attributes = attributes_util.GetDefaultServiceAttributesFromDeviceInfo(device_info)
+
+    # RR.ServerNodeSetup("NodeName", TCP listen port, optional set of flags as parameters)
+    with RR.ServerNodeSetup("tech.pyri.vision.template_matching", 55919) as node_setup:
 
         # create object
-        CameraTracking_inst = CameraTracking_impl()
-        # register service with service name "CameraTracking", type "experimental.pluginCameraTracking.CameraTracking", actual object: CameraTracking_inst
-        RRN.RegisterService("CameraTracking","experimental.pluginCameraTracking.CameraTracking",CameraTracking_inst)
+        VisionTemplateMatching_inst = VisionTemplateMatching_impl(args.device_manager_url, device_info=device_info, node = RRN)
+        # register service with service name "vision_template_matching", type "tech.pyri.vision.template_matching.VisionTemplateMatchingService", 
+        # actual object: VisionTemplateMatching_inst
+        ctx = RRN.RegisterService("vision_template_matching","tech.pyri.vision.template_matching.VisionTemplateMatchingService",VisionTemplateMatching_inst)
+        ctx.SetServiceAttributes(device_attributes)
 
         #Wait for the user to shutdown the service
-        if (sys.version_info > (3, 0)):
-            input("pluginCameraTracking Server started, press enter to quit...")
+        if args.wait_signal:  
+            #Wait for shutdown signal if running in service mode          
+            print("Press Ctrl-C to quit...")
+            import signal
+            signal.sigwait([signal.SIGTERM,signal.SIGINT])
         else:
-            raw_input("pluginCameraTracking Server started, press enter to quit...")
+            #Wait for the user to shutdown the service
+            if (sys.version_info > (3, 0)):
+                input("Server started, press enter to quit...")
+            else:
+                raw_input("Server started, press enter to quit...")
 
 if __name__ == '__main__':
     main()
