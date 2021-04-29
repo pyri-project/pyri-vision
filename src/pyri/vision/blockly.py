@@ -126,6 +126,81 @@ def _get_blocks() -> Dict[str,PyriBlocklyBlock]:
                            """
     )
 
+    blocks["vision_template_match"] = PyriBlocklyBlock(
+        name = "vision_template_match",
+        category = "Vision",
+        doc = "Object template matching using cross-correlation",
+        json = """
+                {
+                "type": "vision_template_match",
+                "message0": "vision match template name %1 object z (m) %2 ROI %3 %4",
+                "args0": [
+                    {
+                    "type": "input_value",
+                    "name": "TEMPLATE"
+                    },
+                    {
+                    "type": "input_value",
+                    "name": "OBJECT_Z"
+                    },
+                    {
+                    "type": "input_value",
+                    "name": "ROI"
+                    },
+                    {
+                    "type": "input_dummy"
+                    }
+                ],
+                "output": null,
+                "colour": 180,
+                "tooltip": "Run vision template matching",
+                "helpUrl": ""
+                }
+               """,
+        python_generator = """
+                            Blockly.Python['vision_template_match'] = function(block) {
+                            var value_template = Blockly.Python.valueToCode(block, 'TEMPLATE', Blockly.Python.ORDER_ATOMIC);
+                            var value_object_z = Blockly.Python.valueToCode(block, 'OBJECT_Z', Blockly.Python.ORDER_ATOMIC);
+                            var value_roi = Blockly.Python.valueToCode(block, 'ROI', Blockly.Python.ORDER_ATOMIC);
+                            // TODO: Assemble Python into code variable.
+                            var code = 'vision_template_match(' + value_template + ',' + value_object_z + ',' + value_roi +')';
+                            // TODO: Change ORDER_NONE to the correct strength.
+                            return [code, Blockly.Python.ORDER_NONE];
+                            };
+                           """
+    )
+
+    blocks["vision_matched_template_get_pose"] = PyriBlocklyBlock(
+        name = "vision_matched_template_get_pose",
+        category = "Vision",
+        doc = "Get pose of a previous template match",
+        json = """
+                {
+                "type": "vision_matched_template_get_pose",
+                "message0": "get template match pose %1",
+                "args0": [
+                    {
+                    "type": "input_value",
+                    "name": "TEMPLATE_MATCH"
+                    }
+                ],
+                "output": null,
+                "colour": 180,
+                "tooltip": "Get pose of a previously matched template",
+                "helpUrl": ""
+                }
+               """,
+        python_generator = """
+                            Blockly.Python['vision_matched_template_get_pose'] = function(block) {
+                            var value_template_match = Blockly.Python.valueToCode(block, 'TEMPLATE_MATCH', Blockly.Python.ORDER_ATOMIC);
+                            // TODO: Assemble Python into code variable.
+                            var code = 'vision_matched_template_get_pose(' + value_template_match + ')';
+                            // TODO: Change ORDER_NONE to the correct strength.
+                            return [code, Blockly.Python.ORDER_NONE];
+                            };
+                           """
+    )
+
     return blocks
 
 def _get_categories() -> Dict[str,PyriBlocklyCategory]:

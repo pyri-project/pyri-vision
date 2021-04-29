@@ -19,11 +19,25 @@ def vision_aruco_detected_get_id(detected_marker):
         detected_marker = detected_marker[0]
     return detected_marker.marker_id
 
+def vision_template_match(template, object_z, roi):
+    device_manager = PyriSandboxContext.device_manager
+    template_matching = device_manager.get_device_client("vision_template_matching", 1)
+    res = template_matching.match_template_world_pose_camera_capture("camera",template, "camera_calibration_intrinsic","camera_calibration_extrinsic",object_z,roi)
+    return res.template_matches
+
+def vision_matched_template_get_pose(template_match):
+    if isinstance(template_match,list):
+        template_match = template_match[0]
+    return template_match.pose.pose.pose
+
 def _get_sandbox_functions():
     return {
         "vision_detect_aruco": vision_detect_aruco,
         "vision_aruco_detected_get_pose": vision_aruco_detected_get_pose,
-        "vision_aruco_detected_get_id": vision_aruco_detected_get_id
+        "vision_aruco_detected_get_id": vision_aruco_detected_get_id,
+        "vision_template_match": vision_template_match,
+        "vision_matched_template_get_pose": vision_matched_template_get_pose
+
     }
 
 class VisionSandboxFunctionsPluginFactory(PyriSandboxFunctionsPluginFactory):
