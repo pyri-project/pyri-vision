@@ -18,6 +18,8 @@ from RobotRaconteurCompanion.Util.GeometryUtil import GeometryUtil
 
 from .opencv_template_matching_ROI import TemplateMatchingMultiAngleWithROI
 
+import general_robotics_toolbox as rox
+
 class VisionTemplateMatching_impl(object):
     def __init__(self, device_manager_url, device_info = None, node: RR.RobotRaconteurNode = None):
         if node is None:
@@ -122,68 +124,114 @@ class VisionTemplateMatching_impl(object):
 
         return match_result
 
-    def find_object_pose_in_cam_frame(self,obj_img_filename, camera_name, value_z_distance):
-        if self.is_plugins_connected and self.is_cameras_connected:
-            # If the value of z distance is given bigger than zero use the given one 
-            #otherwise camera has 3D capability, get z value from thecapability of the camera
-            if value_z_distance <= 0:
-                #TODO
-                # value_z_distance = getFrom3DCapableCamera
-                print("Provide a proper positive z distance")
-            
-            # Find the object in image frame 
-            detection_result = self.find_object_in_img_frame(obj_img_filename, camera_name, False)
-            
-            # detection_result.width
-            # detection_result.height
-            x = detection_result.center_x
-            y = detection_result.center_y
-            theta = detection_result.angle
-            src = np.asarray([x,y], dtype=np.float32)
-            src = np.reshape(src,(-1,1,2)) # Rehsape as opencv requires (N,1,2)
-            # print(src)
-            # Now the detection results in image frame is found,
-            # Hence, find the detected pose in camera frame with given z distance to camera
-            # To do that first we need to get the camera parameters
-            # Load the camera matrix and distortion coefficients from the calibration result.
-            filename = str(camera_name) + ".yml"
-            params = self.plugin_cameraCalibration.load_calibration(filename)
+    def _do_match_with_pose(self,image, template, intrinsic_calib, extrinsic_calib, object_z, roi):
+        
+        matcher_roi = None
 
-            mtx = params.camera_matrix 
-            dist = params.distortion_coefficients
-            # R_co = params.R_co 
-            # T_co = params.T_co 
-            # error = params.error
-
-            # Find the corresponding world pose of the detected pose in camera frame
-            dst = cv2.undistortPoints(src,mtx,dist) # dst is Xc/Zc and Yc/Zc in the same shape of src
-            dst = dst * float(value_z_distance) * 1000.0 # Multiply by given Zc distance to find all cordinates, multiply by 1000 is because of Zc is given in meters but others are in millimeters
-            dst = np.squeeze(dst) * 0.001 # Xc and Yc as vector
-
-            # Finally the translation between the detected object center and the camera frame represented in camera frame is T = [Xc,Yc,Zc]
-            Xc = dst[0]
-            Yc = dst[1]
-            Zc = float(value_z_distance)
-            T = np.asarray([Xc,Yc,Zc])
-
-            # Now lets find the orientation of the detected object with respect to camera 
-            # We are assuming +z axis is looking towards the camera and xy axes of the both object and camera are parallel planes
-            # So the rotation matrix would be
-            theta = np.deg2rad(theta) #convert theta from degrees to radian
-            R_co = np.asarray([[math.cos(theta),-math.sin(theta),0],[-math.sin(theta),-math.cos(theta),0],[0,0,-1]])
-
-            # Pack the results into CalibrationParameters structure
-            pose = RRN.NewStructure("experimental.pluginCameraTracking.Pose")
-            pose.R = R_co
-            pose.T = T
-
-            return pose
-
-        else:
-            # Give an error message to show that the robot is not connected
-            print("Cameras or plugins are not connected to VisionTemplateMatching service yet!")
+        if roi is not None:
+            roi_x = roi.center.pose[0]["position"]["x"]
+            roi_y = roi.center.pose[0]["position"]["y"]
+            roi_theta = roi.center.pose[0]["orientation"]
+            roi_w = roi.size[0]["width"]
+            roi_h = roi.size[0]["height"]
+            matcher_roi = (roi_x, roi_y, roi_w, roi_h, -roi_theta)
 
 
+        # execute the image detection using opencv
+        matcher = TemplateMatchingMultiAngleWithROI(template,image,matcher_roi)
+        # return_result_image = True
+        
+        match_center, template_wh, match_angle, detection_result_img = matcher.detect_object(True)
+           
+        # detection_result.width
+        # detection_result.height
+        x = match_center[0]
+        y = match_center[1]
+        theta = match_angle
+        src = np.asarray([x,y], dtype=np.float32)
+        src = np.reshape(src,(-1,1,2)) # Rehsape as opencv requires (N,1,2)
+        # print(src)
+        # Now the detection results in image frame is found,
+        # Hence, find the detected pose in camera frame with given z distance to camera
+        # To do that first we need to get the camera parameters
+        # Load the camera matrix and distortion coefficients from the calibration result.
+        
+
+        mtx = intrinsic_calib.K
+        d = intrinsic_calib.distortion_info.data
+        dist = np.array([d.k1,d.k2,d.p1,d.p2,d.k3])
+
+        T_cam = self._geom_util.named_pose_to_rox_transform(extrinsic_calib.pose)
+
+        # Find the corresponding world pose of the detected pose in camera frame
+        dst = cv2.undistortPoints(src,mtx,dist) # dst is Xc/Zc and Yc/Zc in the same shape of src
+        dst = dst * float(object_z) * 1000.0 # Multiply by given Zc distance to find all cordinates, multiply by 1000 is because of Zc is given in meters but others are in millimeters
+        dst = np.squeeze(dst) * 0.001 # Xc and Yc as vector
+
+        # Finally the translation between the detected object center and the camera frame represented in camera frame is T = [Xc,Yc,Zc]
+        Xc = dst[0]
+        Yc = dst[1]
+        Zc = float(object_z)
+        T = np.asarray([Xc,Yc,Zc])
+
+        # Now lets find the orientation of the detected object with respect to camera 
+        # We are assuming +z axis is looking towards the camera and xy axes of the both object and camera are parallel planes
+        # So the rotation matrix would be
+        theta = np.deg2rad(theta) #convert theta from degrees to radian
+        R_co = np.asarray([[math.cos(theta),-math.sin(theta),0],[-math.sin(theta),-math.cos(theta),0],[0,0,-1]])
+
+        T_obj_cam_frame = rox.Transform(R_co, T, "world", "object")
+
+        T_obj = T_cam * T_obj_cam_frame
+        
+        # TODO: Better adjustment of Z height?
+        T_obj.p[2] = object_z
+
+        ret1 = self._matched_template_3d_type()
+        ret1.pose = self._named_pose_with_covariance_type()
+        ret1.pose.pose = self._geom_util.rox_transform_to_named_pose(T_obj)
+        ret1.pose.covariance= np.zeros((6,6))
+        ret1.confidence = 0
+
+        ret = self._template_matching_result_3d_type()
+        ret.template_matches = [ret1]
+        ret.display_image = self._image_util.array_to_compressed_image_jpg(detection_result_img,70)
+
+        return ret
+
+    def _do_match_template_world_pose(self, image, template_global_name,
+        camera_calibration_intrinsic, camera_calibration_extrinsic, object_z_height, roi, var_storage):
+
+        template_var = var_storage.getf_variable_value("globals", template_global_name)
+        template = self._image_util.compressed_image_to_array(template_var.data)
+
+        intrinsic_calib = var_storage.getf_variable_value("globals", camera_calibration_intrinsic).data
+        extrinsic_calib = var_storage.getf_variable_value("globals", camera_calibration_extrinsic).data
+
+        return self._do_match_with_pose(image,template,intrinsic_calib,extrinsic_calib,object_z_height,roi)
+
+    def match_template_world_pose_stored_image(self, image_global_name, template_global_name,
+        camera_calibration_intrinsic, camera_calibration_extrinsic, object_z_height, roi):
+
+        var_storage = self.device_manager.get_device_client("variable_storage",1)
+
+        image_var = var_storage.getf_variable_value("globals", image_global_name)
+        image = self._image_util.compressed_image_to_array(image_var.data)
+
+        return self._do_match_template_world_pose(image, template_global_name, camera_calibration_intrinsic,
+            camera_calibration_extrinsic, object_z_height, roi, var_storage)
+
+    def match_template_world_pose_camera_capture(self, camera_local_device_name, template_global_name,
+        camera_calibration_intrinsic, camera_calibration_extrinsic, object_z_height, roi):
+
+        var_storage = self.device_manager.get_device_client("variable_storage",1)
+
+        camera_device = self.device_manager.get_device_client(camera_local_device_name,1)
+        img_rr = camera_device.capture_frame_compressed()
+        image = self._image_util.compressed_image_to_array(img_rr)
+
+        return self._do_match_template_world_pose(image, template_global_name, camera_calibration_intrinsic,
+            camera_calibration_extrinsic, object_z_height, roi, var_storage)
 
 
 def main():

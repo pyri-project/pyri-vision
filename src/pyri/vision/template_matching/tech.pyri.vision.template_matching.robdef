@@ -48,8 +48,14 @@ object VisionTemplateMatchingService
 
     function TemplateMatchingResult2D match_template_camera_capture(string camera_local_device_name, string template_global_name, BoundingBox2D roi)
 
-    # Detect the Object and return the pose in CAMERA frame for its center
-    function Pose find_object_pose_in_cam_frame(string obj_img_filename, string camera_name, double value_z_distance)
+    # Detect the Object and return the pose in WORLD frame for its center
+    function TemplateMatchingResult3D match_template_world_pose_stored_image(string image_global_name, string template_global_name, \
+        string camera_calibration_intrinsic, string camera_calibration_extrinsic, \
+        double object_z_height, BoundingBox2D roi)
+
+    function TemplateMatchingResult3D match_template_world_pose_camera_capture(string camera_local_device_name, string template_global_name, \
+        string camera_calibration_intrinsic, string camera_calibration_extrinsic, \
+        double object_z_height, BoundingBox2D roi)
     
 
 end
