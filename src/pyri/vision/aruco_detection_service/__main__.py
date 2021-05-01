@@ -72,6 +72,7 @@ class VisionArucoDetection_impl(object):
         aruco_dict_i = getattr(aruco, aruco_dict_str) # convert string to python
         aruco_dict = cv2.aruco.Dictionary_get(aruco_dict_i)
         aruco_params = cv2.aruco.DetectorParameters_create()
+        aruco_params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
 
         corners1, ids1, rejected = cv2.aruco.detectMarkers(img, aruco_dict, parameters=aruco_params)
 
@@ -130,7 +131,22 @@ class VisionArucoDetection_impl(object):
 
                 display_img = cv2.aruco.drawAxis(display_img,mtx,dist,rvec,tvec,0.05)
 
-                R_marker1 = cv2.Rodrigues(rvec.flatten())[0]
+                # R_marker1 = cv2.Rodrigues(rvec.flatten())[0]
+                # TODO: 3D pose estimation from rvec is very innaccurate. Use a simple trigonometry
+                # to estimate the Z rotation of the tag
+                
+                # compute vectors from opposite corners
+                v1 = corner4[0,2,:] - corner4[0,0,:]
+                v2 = corner4[0,3,:] - corner4[0,1,:]
+
+                # Use atan2 on each vector and average
+                theta1 = (np.arctan2(v1[1],v1[0]) - np.deg2rad(45)) % (2.*np.pi)
+                theta2 = (np.arctan2(v2[1],v2[0]) - np.deg2rad(135)) % (2.*np.pi)
+
+                theta = (theta1 + theta2)/2.
+                
+                R_marker1 = rox.rot([1.,0.,0.],np.pi) @ rox.rot([0.,0.,-1.], theta)
+
                 p_marker1 = tvec.flatten()
 
                 T_marker1 = rox.Transform(R_marker1,p_marker1,"camera", f"aruco{int(id4)}")
