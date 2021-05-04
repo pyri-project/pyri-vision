@@ -15,6 +15,8 @@ import time
 import threading
 import traceback
 
+from pyri.util.robotraconteur import add_default_ws_origins
+
 class CameraViewer_impl:
     def __init__(self, parent, camera_sub):
         self._lock = threading.Lock()
@@ -199,6 +201,7 @@ def main():
     parser.add_argument("--device-info-file", type=argparse.FileType('r'),default=None,required=True,help="Device info file for devices states service (required)")
     parser.add_argument('--device-manager-url', type=str, default=None,required=True,help="Robot Raconteur URL for device manager service (required)")
     parser.add_argument("--wait-signal",action='store_const',const=True,default=False, help="wait for SIGTERM or SIGINT (Linux only)")
+    parser.add_argument("--pyri-webui-server-port",type=int,default=8000,help="The PyRI WebUI port for websocket origin (default 8000)")
     
     args, _ = parser.parse_known_args()
 
@@ -217,6 +220,8 @@ def main():
 
     # RR.ServerNodeSetup("NodeName", TCP listen port, optional set of flags as parameters)
     with RR.ServerNodeSetup("tech.pyri.vision.camera_viewer", 55916) as node_setup:
+
+        add_default_ws_origins(node_setup.tcp_transport,args.pyri_webui_server_port)
 
         # register service type
         

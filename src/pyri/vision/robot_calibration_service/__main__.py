@@ -20,6 +20,8 @@ from . import opencv_aruco_extrinsic_calibration as calibrator
 
 import cv2
 
+from pyri.util.robotraconteur import add_default_ws_origins
+
 
 class CameraRobotCalibrationService_impl(object):
     def __init__(self, device_manager_url, device_info = None, node : RR.RobotRaconteurNode = None):
@@ -122,6 +124,7 @@ def main():
     parser.add_argument("--device-info-file", type=argparse.FileType('r'),default=None,required=True,help="Device info file for robot calibration service (required)")
     parser.add_argument('--device-manager-url', type=str, default=None,required=True,help="Robot Raconteur URL for device manager service (required)")
     parser.add_argument("--wait-signal",action='store_const',const=True,default=False, help="wait for SIGTERM or SIGINT (Linux only)")
+    parser.add_argument("--pyri-webui-server-port",type=int,default=8000,help="The PyRI WebUI port for websocket origin (default 8000)")
 
     args, _ = parser.parse_known_args()
     RRC.RegisterStdRobDefServiceTypes(RRN)
@@ -140,6 +143,8 @@ def main():
 
     # RR.ServerNodeSetup("NodeName", TCP listen port, optional set of flags as parameters)
     with RR.ServerNodeSetup("pyri.tech.vision.robot_calibration", 55918) as node_setup:
+
+        add_default_ws_origins(node_setup.tcp_transport,args.pyri_webui_server_port)
         
           # create object
         CameraRobotCalibrationService_inst = CameraRobotCalibrationService_impl(args.device_manager_url, device_info=device_info, node = RRN)
