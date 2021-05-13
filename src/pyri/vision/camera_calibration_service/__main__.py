@@ -192,7 +192,8 @@ class CameraCalibrationService_impl:
         self.service_path = None
         self.ctx = None
 
-        self.device_manager = DeviceManagerClient(device_manager_url)
+        self.device_manager = DeviceManagerClient(device_manager_url,autoconnect=False)
+        self.device_manager.connect_device_type("tech.pyri.variable_storage.VariableStorage")
         self.device_manager.device_added += self._device_added
         self.device_manager.device_removed += self._device_removed
         self.device_manager.refresh_devices(5)
