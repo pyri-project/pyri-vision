@@ -80,6 +80,11 @@ class VisionArucoDetection_impl(object):
 
         corners1, ids1, rejected = cv2.aruco.detectMarkers(img, aruco_dict, parameters=aruco_params)
 
+        if corners1 is None:
+            corners1 = []
+        if ids1 is None:
+            ids1 = []
+
         if aruco_id < 0:
             corners2 = corners1
             ids2 = ids1
