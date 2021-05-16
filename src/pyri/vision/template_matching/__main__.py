@@ -178,7 +178,7 @@ class VisionTemplateMatching_impl(object):
         # Finally the translation between the detected object center and the camera frame represented in camera frame is T = [Xc,Yc,Zc]
         Xc = dst[0]
         Yc = dst[1]
-        Zc = float(object_z)
+        Zc = float(object_z_cam_dist)
         T = np.asarray([Xc,Yc,Zc])
 
         # Now lets find the orientation of the detected object with respect to camera 
@@ -187,7 +187,7 @@ class VisionTemplateMatching_impl(object):
         theta = np.deg2rad(theta) #convert theta from degrees to radian
         R_co = np.asarray([[math.cos(theta),-math.sin(theta),0],[-math.sin(theta),-math.cos(theta),0],[0,0,-1]])
 
-        T_obj_cam_frame = rox.Transform(R_co, T, "world", "object")
+        T_obj_cam_frame = rox.Transform(R_co, T, "camera", "object")
 
         T_obj = T_cam * T_obj_cam_frame
         

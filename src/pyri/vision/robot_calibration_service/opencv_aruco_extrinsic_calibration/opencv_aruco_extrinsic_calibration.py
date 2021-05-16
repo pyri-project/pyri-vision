@@ -7,55 +7,22 @@ import general_robotics_toolbox as rox
 from RobotRaconteurCompanion.Util.ImageUtil import ImageUtil
 from RobotRaconteurCompanion.Util.GeometryUtil import GeometryUtil
 
-def rigid_transform_3D(A, B):
-    # This function is taken from https://github.com/nghiaho12/rigid_transform_3D.git
-    # Further information: http://nghiaho.com/?page_id=671
-    
-    # Input: expects 3xN matrix of points
-    # Returns R,t
-    # R = 3x3 rotation matrix
-    # t = 3x1 column vector
-    assert A.shape == B.shape
 
-    num_rows, num_cols = A.shape
-    if num_rows != 3:
-        raise Exception(f"matrix A is not 3xN, it is {num_rows}x{num_cols}")
+def _marker_corner_poses(T_marker, marker_size):
+    corners = np.array([
+        [-1,-1,0],
+        [1,-1,0],
+        [1,1,0],
+        [-1,1,0]
+    ]) * marker_size/2.0
 
-    num_rows, num_cols = B.shape
-    if num_rows != 3:
-        raise Exception(f"matrix B is not 3xN, it is {num_rows}x{num_cols}")
+    ret = []
 
-    # find mean column wise
-    centroid_A = np.mean(A, axis=1)
-    centroid_B = np.mean(B, axis=1)
+    for i in range(4):
+        ret.append(T_marker * rox.Transform(np.eye(3),corners[i,:].flatten()))
 
-    # ensure centroids are 3x1
-    centroid_A = centroid_A.reshape(-1, 1)
-    centroid_B = centroid_B.reshape(-1, 1)
+    return ret  
 
-    # subtract mean
-    Am = A - centroid_A
-    Bm = B - centroid_B
-
-    H = Am @ np.transpose(Bm)
-
-    # sanity check
-    #if linalg.matrix_rank(H) < 3:
-    #    raise ValueError("rank of H = {}, expecting 3".format(linalg.matrix_rank(H)))
-
-    # find rotation
-    U, S, Vt = np.linalg.svd(H)
-    R = Vt.T @ U.T
-
-    # special reflection case
-    if np.linalg.det(R) < 0:
-        print("det(R) < R, reflection detected!, correcting for it ...")
-        Vt[2,:] *= -1
-        R = Vt.T @ U.T
-
-    t = -R @ centroid_A + centroid_B
-
-    return R, t
 
 def calibrate(images, joint_poses, aruco_dict, aruco_id, aruco_markersize, flange_to_marker, mtx, dist, cam_pose, rox_robot, robot_local_device_name):
     """ Apply extrinsic camera calibration operation for images in the given directory path 
@@ -68,13 +35,15 @@ def calibrate(images, joint_poses, aruco_dict, aruco_id, aruco_markersize, flang
     aruco_dict = cv2.aruco.Dictionary_get(aruco_dict)
     aruco_params = cv2.aruco.DetectorParameters_create()
 
-    pose_pairs_dict={}
     i = 0
 
     imgs_out = []
 
     geom_util = GeometryUtil()
     image_util = ImageUtil()
+
+    object_points = []
+    image_points = []
 
     for img,joints in zip(images,joint_poses):
         
@@ -118,75 +87,28 @@ def calibrate(images, joint_poses, aruco_dict, aruco_id, aruco_markersize, flang
                 img1 = img.copy()
                 img_out = cv2.aruco.drawAxis(img1, mtx, dist, rvec, tvec, aruco_markersize*0.75)  # Draw Axis
                 imgs_out.append(img_out)
-                # cv2.imshow("detected tag",img_out)
-                # cv2.waitKey()
-
-                # Convert tvec to one dimensional array, it was [[tvec]].
-                T_cam2marker = tvec[0].flatten() # in camera's frame
-                # Convert rvec to Rotation matrix
-                R_cam2marker = cv2.Rodrigues(rvec[0])[0]
-
-                # Store the calculated marker pose pair
-                #R_base2marker = np.asarray(saved_marker_poses_dict[fname.split('/')[-1]][0]) # Convert every R and T into numpy array in the dictionary
-                #T_base2marker = np.asarray(saved_marker_poses_dict[fname.split('/')[-1]][1])
-
+                
                 transform_base_2_flange = rox.fwdkin(rox_robot, joints)
                 transform_flange_2_marker = geom_util.pose_to_rox_transform(flange_to_marker)
                 transform_base_2_marker = transform_base_2_flange * transform_flange_2_marker
-                R_base2marker = transform_base_2_marker.R
-                T_base2marker = transform_base_2_marker.p
-
+                transform_base_2_marker_corners = _marker_corner_poses(transform_base_2_marker,aruco_markersize)
                 # Structure of this disctionary is "filename":[[R_base2marker],[T_base2marker],[R_cam2marker],[T_cam2marker]]
-                pose_pairs_dict[i] = [R_base2marker,T_base2marker,R_cam2marker,T_cam2marker]
+                for j in range(4):
+                    object_points.append(transform_base_2_marker_corners[j].p)
+                    image_points.append(corners[0,j])
+                #pose_pairs_dict[i] = (transform_base_2_marker_corners, corners)
                 i+=1
     
-    # cv2.destroyAllWindows() # Debug
-    print("HERE") # debug
 
-    # Now its time to execute calibration
-    src_lst = []
-    dst_lst = []
-    
-    for img_number, value in pose_pairs_dict.items():
-        R_base2marker = value[0]
-        T_base2marker = value[1]
-        R_cam2marker = value[2]
-        T_cam2marker = value[3]
 
-        # print("------------------------")
-        # print(filename)
-        # # #debug
-        # # print(str(type(R_base2marker)))
-        # # print(str(R_base2marker))  
-        # # print(str(type(T_base2marker))) 
-        # # print(str(T_base2marker))
-        # # #debug
-        # # print(str(type(R_cam2marker)))
-        # # print(str(R_cam2marker))  
-        # # print(str(type(T_cam2marker))) 
-        # # print(str(T_cam2marker)) 
 
-        # # debug
-        # print("My own calculation T_cam2base:")
-        # print(str(T_cam2marker - (R_cam2marker @ R_base2marker.T @ T_base2marker) ))
-        # print("My own calculation R_cam2base:")
-        # print(str(R_cam2marker @ R_base2marker.T))
-
-        # print("My own calculation T_base2cam:")
-        # print(str(T_base2marker - (R_base2marker @ R_cam2marker.T @ T_cam2marker ) ))
-        # print("My own calculation R_base2cam:")
-        # print(str(R_base2marker @ R_cam2marker.T))
-        # print("++++++++++++++++++++++++")
-
-        src_lst.append(T_base2marker)
-        dst_lst.append(T_cam2marker)
-        
-    # Convert lists to numpy arrays because this is what opencv wants
-    src_arr = np.asarray(src_lst)
-    dst_arr = np.asarray(dst_lst)
+    object_points_np = np.array(object_points,dtype=np.float64)
+    image_points_np = np.array(image_points,dtype=np.float32)
 
     # Finally execute the calibration
-    R_cam2base,T_cam2base = rigid_transform_3D(src_arr.T,dst_arr.T)
+    retval, rvec, tvec = cv2.solvePnP(object_points_np, image_points_np, mtx, dist)
+    R_cam2base = cv2.Rodrigues(rvec)[0]
+    T_cam2base = tvec
 
     # Add another display image of marker at robot base
     img_out = cv2.aruco.drawAxis(img, mtx, dist, cv2.Rodrigues(R_cam2base)[0], T_cam2base, aruco_markersize*0.75)  # Draw Axis
