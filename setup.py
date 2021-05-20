@@ -10,6 +10,13 @@ setup(
     package_dir={'': 'src'},
     packages=find_namespace_packages(where='src'),
     include_package_data=True,
+    package_data = {
+        'pyri.vision.aruco_detection_service': ['*.robdef'],
+        'pyri.vision.camera_calibration_service': ['*.robdef'],
+        'pyri.vision.camera_viewer_service': ['*.robdef'],
+        'pyri.vision.robot_calibration_service': ['*.robdef'],
+        'pyri.vision.template_matching': ['*.robdef']
+    },
     zip_safe=False,
     install_requires=[
         'pyri-common',
