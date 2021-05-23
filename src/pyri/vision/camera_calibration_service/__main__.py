@@ -22,7 +22,7 @@ import general_robotics_toolbox as rox
 import cv2
 from cv2 import aruco
 
-from pyri.util.robotraconteur import add_default_ws_origins
+from pyri.util.service_setup import PyriServiceNodeSetup
 
 def _cv_img_to_rr_display_img(img):
     height,width = img.shape[0:2]
@@ -182,7 +182,7 @@ def _calibrate_camera_extrinsic(intrinsic_calib, image, board, camera_local_devi
     cov = np.eye(6) * 1e-5
     return geom_util.rox_transform_to_named_pose(T), cov, image_util.array_to_compressed_image_jpg(cv_image2), 0.0
 class CameraCalibrationService_impl:
-    def __init__(self, device_manager_url, device_info = None, node : RR.RobotRaconteurNode = None):
+    def __init__(self, device_manager, device_info = None, node : RR.RobotRaconteurNode = None):
         if node is None:
             self._node = RR.RobotRaconteurNode.s
         else:
@@ -192,7 +192,7 @@ class CameraCalibrationService_impl:
         self.service_path = None
         self.ctx = None
 
-        self.device_manager = DeviceManagerClient(device_manager_url,autoconnect=False)
+        self.device_manager = device_manager
         self.device_manager.connect_device_type("tech.pyri.variable_storage.VariableStorage")
         self.device_manager.device_added += self._device_added
         self.device_manager.device_removed += self._device_removed
@@ -279,54 +279,17 @@ class CameraCalibrationService_impl:
         return ret
 
 def main():
-
-    parser = argparse.ArgumentParser(description="PyRI Camera Calibration Service")    
-    parser.add_argument("--device-info-file", type=argparse.FileType('r'),default=None,required=True,help="Device info file for devices states service (required)")
-    parser.add_argument('--device-manager-url', type=str, default=None,required=True,help="Robot Raconteur URL for device manager service (required)")
-    parser.add_argument("--wait-signal",action='store_const',const=True,default=False, help="wait for SIGTERM or SIGINT (Linux only)")
-    parser.add_argument("--pyri-webui-server-port",type=int,default=8000,help="The PyRI WebUI port for websocket origin (default 8000)")
-    
-    args, _ = parser.parse_known_args()
-
-    RRC.RegisterStdRobDefServiceTypes(RRN)
-    RRN.RegisterServiceType(resources.read_text(__package__,'tech.pyri.vision.calibration.robdef'))
-
-    with args.device_info_file:
-        device_info_text = args.device_info_file.read()
-
-    info_loader = InfoFileLoader(RRN)
-    device_info, device_ident_fd = info_loader.LoadInfoFileFromString(device_info_text, "com.robotraconteur.device.DeviceInfo", "device")
-
-    attributes_util = AttributesUtil(RRN)
-    device_attributes = attributes_util.GetDefaultServiceAttributesFromDeviceInfo(device_info)
-
-
-    # RR.ServerNodeSetup("NodeName", TCP listen port, optional set of flags as parameters)
-    with RR.ServerNodeSetup("tech.pyri.vision.camera_calibration", 55917) as node_setup:
-
-        add_default_ws_origins(node_setup.tcp_transport,args.pyri_webui_server_port)
-
-        # register service type
         
-
-        # create object
-        CameraCalibrationService_inst = CameraCalibrationService_impl(args.device_manager_url, device_info=device_info, node = RRN)
+    with PyriServiceNodeSetup("tech.pyri.vision.camera_calibration", 55917, \
+        extra_service_defs=[(__package__,'tech.pyri.vision.calibration.robdef')], \
+        default_info=(__package__,"pyri_vision_camera_calibration_service_default_info.yml"), \
+        display_description="PyRI Camera Calibration Service", device_manager_autoconnect=False) as service_node_setup:
+        
+        CameraCalibrationService_inst = CameraCalibrationService_impl(service_node_setup.device_manager, device_info=service_node_setup.device_info_struct, node = RRN)
         # register service with service name "robotics_jog", type "tech.pyri.robotics.jog.RoboticsJogService", actual object: RoboticsJogService_inst
-        ctx = RRN.RegisterService("camera_calibration","tech.pyri.vision.calibration.CameraCalibrationService", CameraCalibrationService_inst)
-        ctx.SetServiceAttributes(device_attributes)
-
-        if args.wait_signal:  
-            #Wait for shutdown signal if running in service mode          
-            print("Press Ctrl-C to quit...")
-            import signal
-            signal.sigwait([signal.SIGTERM,signal.SIGINT])
-        else:
-            #Wait for the user to shutdown the service
-            if (sys.version_info > (3, 0)):
-                input("Server started, press enter to quit...")
-            else:
-                raw_input("Server started, press enter to quit...")
-
+        service_node_setup.register_service("camera_calibration","tech.pyri.vision.calibration.CameraCalibrationService", CameraCalibrationService_inst)
+        
+        service_node_setup.wait_exit()
 
 if __name__ == '__main__':
     main()
