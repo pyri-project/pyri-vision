@@ -33,6 +33,12 @@ setup(
         'pyri.plugins.sandbox_functions': ['pyri-vision-sandbox-functions=pyri.vision.sandbox_functions:get_sandbox_functions_factory'],
         'pyri.plugins.device_type_adapter': ['pyri-vision-type-adapter = pyri.vision.device_type_adapter:get_device_type_adapter_factory'],
         'pyri.plugins.blockly': ['pyri-vision-plugin-blockly=pyri.vision.blockly:get_blockly_factory'],
-        'pyri.plugins.service_node_launch': ['pyri-vision-launch = pyri.vision.service_node_launch:get_service_node_launch_factory']
+        'pyri.plugins.service_node_launch': ['pyri-vision-launch = pyri.vision.service_node_launch:get_service_node_launch_factory'],
+        'console_scripts': ['pyri-vision-aruco-detection-service = pyri.vision.aruco_detection_service.__main__:main',
+            'pyri-vision-camera-calibration-service = pyri.vision.camera_calibration_service.__main__:main',
+            'pyri-vision-camera-viewer-service = pyri.vision.camera_viewer_service.__main__:main',
+            'pyri-vision-robot-calibration-service = pyri.vision.robot_calibration_service.__main__:main',
+            'pyri-vision-template-matching-service = pyri.vision.template_matching.__main__:main'
+        ]
     }
 )
