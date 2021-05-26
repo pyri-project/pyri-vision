@@ -32,6 +32,7 @@ setup(
     entry_points = {
         'pyri.plugins.sandbox_functions': ['pyri-vision-sandbox-functions=pyri.vision.sandbox_functions:get_sandbox_functions_factory'],
         'pyri.plugins.device_type_adapter': ['pyri-vision-type-adapter = pyri.vision.device_type_adapter:get_device_type_adapter_factory'],
-        'pyri.plugins.blockly': ['pyri-vision-plugin-blockly=pyri.vision.blockly:get_blockly_factory']
+        'pyri.plugins.blockly': ['pyri-vision-plugin-blockly=pyri.vision.blockly:get_blockly_factory'],
+        'pyri.plugins.service_node_launch': ['pyri-vision-launch = pyri.vision.service_node_launch:get_service_node_launch_factory']
     }
 )
