@@ -216,7 +216,8 @@ def main():
     with PyriServiceNodeSetup("tech.pyri.vision.aruco_detection", 55920, \
         extra_service_defs=[(__package__,"tech.pyri.vision.aruco_detection.robdef")], \
         default_info = (__package__,"pyri_vision_aruco_detection_service_default_info.yml"), \
-        display_description="PyRI Aruco Detection Service", device_manager_autoconnect=False) as service_node_setup:
+        display_description="PyRI Aruco Detection Service", device_manager_autoconnect=False, \
+        distribution_name="pyri-vision") as service_node_setup:
         
         # create object
         VisionArucoDetection_inst = VisionArucoDetection_impl(service_node_setup.device_manager, device_info=service_node_setup.device_info_struct, node = RRN)

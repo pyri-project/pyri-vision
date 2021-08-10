@@ -125,7 +125,8 @@ def main():
     with PyriServiceNodeSetup("pyri.tech.vision.robot_calibration", 55918, \
         extra_service_defs=[(__package__,'tech.pyri.vision.robot_calibration.robdef')], \
         default_info=(__package__,"pyri_vision_robot_calibration_service_default_info.yml"), \
-        display_description="PyRI Vision Robot Calibration Service", device_manager_autoconnect=False) as service_node_setup:
+        display_description="PyRI Vision Robot Calibration Service", device_manager_autoconnect=False, \
+        distribution_name="pyri-vision") as service_node_setup:
 
           # create object
         CameraRobotCalibrationService_inst = CameraRobotCalibrationService_impl(service_node_setup.device_manager, device_info=service_node_setup.device_info_struct, node = RRN)

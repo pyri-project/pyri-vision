@@ -246,7 +246,8 @@ def main():
     with PyriServiceNodeSetup("tech.pyri.vision.template_matching", 55919, \
         extra_service_defs=[(__package__,'tech.pyri.vision.template_matching.robdef')], \
         default_info=(__package__,"pyri_vision_template_matching_service_default_info.yml"), \
-        display_description="PyRI Vision Template Matching Service", device_manager_autoconnect=False) as service_node_setup:
+        display_description="PyRI Vision Template Matching Service", device_manager_autoconnect=False, \
+        distribution_name="pyri-vision") as service_node_setup:
 
         # create object
         VisionTemplateMatching_inst = VisionTemplateMatching_impl(service_node_setup.device_manager, device_info=service_node_setup.device_info_struct, node = RRN)
