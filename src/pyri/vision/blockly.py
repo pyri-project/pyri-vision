@@ -207,7 +207,7 @@ def _get_categories() -> Dict[str,PyriBlocklyCategory]:
     categories = {}
     categories["Vision"] = PyriBlocklyCategory(
         name = "Vision",
-        json = '{"kind": "category", "name": "Vision", "colour": 230 }'
+        json = '{"kind": "category", "name": "Vision", "colour": 180 }'
     )
 
     return categories
