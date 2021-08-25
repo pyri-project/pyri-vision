@@ -8,6 +8,11 @@ This package is part of the PyRI project. See https://github.com/pyri-project/py
 
 The `pyri-vision` package contains plugins and services for computer vision operations.
 
+Demo videos:
+
+* https://youtu.be/0Q6a07FSsBc
+* https://youtu.be/jF_BGaFI7Qc
+
 ## Blocks and Sandbox Functions
 
 This package contains Blockly blocks and PyRI sandbox functions for computer vision operations. See [vision_blocks_functions.md](doc/vision_blocks_functions.md) for more information.
