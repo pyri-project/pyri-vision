@@ -1,15 +1,14 @@
-from pyri.plugins.blockly import PyriBlocklyPluginFactory, PyriBlocklyBlock, PyriBlocklyCategory
+from pyri.plugins.blockly import PyriBlocklyPluginFactory, PyriBlocklyBlock, PyriBlocklyCategory, \
+    add_blockly_block, add_blockly_category
+from . import sandbox_functions
 from typing import List, Dict, NamedTuple, TYPE_CHECKING
 
 def _get_blocks() -> Dict[str,PyriBlocklyBlock]:
     blocks = {}
 
-    blocks["vision_detect_aruco"] = PyriBlocklyBlock(
-        name = "vision_detect_aruco",
+    add_blockly_block(blocks,
         category = "Vision",
-        doc = "Detect aruco markers using camera",
-        json = """
-               {
+        blockly_json = {
                 "type": "vision_detect_aruco",
                 "message0": "detect aruco markers %1 marker id %2 marker size (m) %3 ROI %4 %5",
                 "args0": [
@@ -44,32 +43,17 @@ def _get_blocks() -> Dict[str,PyriBlocklyBlock]:
                     "type": "input_dummy"
                     }
                 ],
-                "output": null,
+                "output": None,
                 "colour": 180,
                 "tooltip": "Detect aruco markers using camera",
                 "helpUrl": ""
-                }
-               """,
-        python_generator = """
-                            Blockly.Python['vision_detect_aruco'] = function(block) {
-                            var dropdown_aruco_dict = block.getFieldValue('ARUCO_DICT');
-                            var value_aruco_id = Blockly.Python.valueToCode(block, 'ARUCO_ID', Blockly.Python.ORDER_ATOMIC);
-                            var value_marker_size = Blockly.Python.valueToCode(block, 'MARKER_SIZE', Blockly.Python.ORDER_ATOMIC);
-                            var value_roi = Blockly.Python.valueToCode(block, 'ROI', Blockly.Python.ORDER_ATOMIC);
-                            // TODO: Assemble Python into code variable.
-                            var code = 'vision_detect_aruco(\"' + dropdown_aruco_dict + '\",' + value_aruco_id + ',' + value_marker_size + ',' + value_roi + ')';
-                            // TODO: Change ORDER_NONE to the correct strength.
-                            return [code, Blockly.Python.ORDER_NONE];
-                            };
-                           """
+                },
+        sandbox_function = (sandbox_functions.vision_detect_aruco,"ARUCO_DICT", "ARUCO_ID", "MARKER_SIZE", "ROI")
     )
 
-    blocks["vision_aruco_detected_get_pose"] = PyriBlocklyBlock(
-        name = "vision_aruco_detected_get_pose",
+    add_blockly_block(blocks,
         category = "Vision",
-        doc = "Get the pose of a previously detected marker",
-        json = """
-                {
+        blockly_json = {
                 "type": "vision_aruco_detected_get_pose",
                 "message0": "get detected aruco marker pose %1",
                 "args0": [
@@ -78,29 +62,17 @@ def _get_blocks() -> Dict[str,PyriBlocklyBlock]:
                     "name": "DETECTED_MARKER"
                     }
                 ],
-                "output": null,
+                "output": None,
                 "colour": 180,
                 "tooltip": "Get pose of a previously detected marker",
                 "helpUrl": ""
-                }
-               """,
-        python_generator = """
-                            Blockly.Python['vision_aruco_detected_get_pose'] = function(block) {
-                            var value_detected_marker = Blockly.Python.valueToCode(block, 'DETECTED_MARKER', Blockly.Python.ORDER_ATOMIC);
-                            // TODO: Assemble Python into code variable.
-                            var code = 'vision_aruco_detected_get_pose(' + value_detected_marker + ')';
-                            // TODO: Change ORDER_NONE to the correct strength.
-                            return [code, Blockly.Python.ORDER_NONE];
-                            };
-                           """
+                },
+        sandbox_function=(sandbox_functions.vision_aruco_detected_get_pose,"DETECTED_MARKER")
     )
 
-    blocks["vision_aruco_detected_get_id"] = PyriBlocklyBlock(
-        name = "vision_aruco_detected_get_id",
+    add_blockly_block(blocks,
         category = "Vision",
-        doc = "Get the id of a previously detected marker",
-        json = """
-                {
+        blockly_json = {
                 "type": "vision_aruco_detected_get_id",
                 "message0": "get detected aruco marker id %1",
                 "args0": [
@@ -109,29 +81,17 @@ def _get_blocks() -> Dict[str,PyriBlocklyBlock]:
                     "name": "DETECTED_MARKER"
                     }
                 ],
-                "output": null,
+                "output": None,
                 "colour": 180,
                 "tooltip": "Get id of a previously detected marker",
                 "helpUrl": ""
-                }
-               """,
-        python_generator = """
-                            Blockly.Python['vision_aruco_detected_get_id'] = function(block) {
-                            var value_detected_marker = Blockly.Python.valueToCode(block, 'DETECTED_MARKER', Blockly.Python.ORDER_ATOMIC);
-                            // TODO: Assemble Python into code variable.
-                            var code = 'vision_aruco_detected_get_id(' + value_detected_marker + ')';
-                            // TODO: Change ORDER_NONE to the correct strength.
-                            return [code, Blockly.Python.ORDER_NONE];
-                            };
-                           """
+                },
+        sandbox_function = (sandbox_functions.vision_aruco_detected_get_id, "DETECTED_MARKER")
     )
 
-    blocks["vision_template_match"] = PyriBlocklyBlock(
-        name = "vision_template_match",
+    add_blockly_block(blocks,
         category = "Vision",
-        doc = "Object template matching using cross-correlation",
-        json = """
-                {
+        blockly_json = {
                 "type": "vision_template_match",
                 "message0": "vision match template name %1 object z (m) %2 ROI %3 %4",
                 "args0": [
@@ -151,31 +111,17 @@ def _get_blocks() -> Dict[str,PyriBlocklyBlock]:
                     "type": "input_dummy"
                     }
                 ],
-                "output": null,
+                "output": None,
                 "colour": 180,
-                "tooltip": "Run vision template matching",
+                "tooltip": "Object template matching using cross-correlation",
                 "helpUrl": ""
-                }
-               """,
-        python_generator = """
-                            Blockly.Python['vision_template_match'] = function(block) {
-                            var value_template = Blockly.Python.valueToCode(block, 'TEMPLATE', Blockly.Python.ORDER_ATOMIC);
-                            var value_object_z = Blockly.Python.valueToCode(block, 'OBJECT_Z', Blockly.Python.ORDER_ATOMIC);
-                            var value_roi = Blockly.Python.valueToCode(block, 'ROI', Blockly.Python.ORDER_ATOMIC);
-                            // TODO: Assemble Python into code variable.
-                            var code = 'vision_template_match(' + value_template + ',' + value_object_z + ',' + value_roi +')';
-                            // TODO: Change ORDER_NONE to the correct strength.
-                            return [code, Blockly.Python.ORDER_NONE];
-                            };
-                           """
+                },
+        sandbox_function=(sandbox_functions.vision_template_match, "TEMPLATE","OBJECT_Z","ROI")
     )
 
-    blocks["vision_matched_template_get_pose"] = PyriBlocklyBlock(
-        name = "vision_matched_template_get_pose",
+    add_blockly_block(blocks,
         category = "Vision",
-        doc = "Get pose of a previous template match",
-        json = """
-                {
+        blockly_json = {
                 "type": "vision_matched_template_get_pose",
                 "message0": "get template match pose %1",
                 "args0": [
@@ -184,32 +130,19 @@ def _get_blocks() -> Dict[str,PyriBlocklyBlock]:
                     "name": "TEMPLATE_MATCH"
                     }
                 ],
-                "output": null,
+                "output": None,
                 "colour": 180,
                 "tooltip": "Get pose of a previously matched template",
                 "helpUrl": ""
-                }
-               """,
-        python_generator = """
-                            Blockly.Python['vision_matched_template_get_pose'] = function(block) {
-                            var value_template_match = Blockly.Python.valueToCode(block, 'TEMPLATE_MATCH', Blockly.Python.ORDER_ATOMIC);
-                            // TODO: Assemble Python into code variable.
-                            var code = 'vision_matched_template_get_pose(' + value_template_match + ')';
-                            // TODO: Change ORDER_NONE to the correct strength.
-                            return [code, Blockly.Python.ORDER_NONE];
-                            };
-                           """
+                },
+        sandbox_function = (sandbox_functions.vision_matched_template_get_pose,"TEMPLATE_MATCH")
     )
 
     return blocks
 
 def _get_categories() -> Dict[str,PyriBlocklyCategory]:
     categories = {}
-    categories["Vision"] = PyriBlocklyCategory(
-        name = "Vision",
-        json = '{"kind": "category", "name": "Vision", "colour": 180 }'
-    )
-
+    add_blockly_category(categories, "Vision", 180)
     return categories
 
 class PyriVisionBlocklyPluginFactory(PyriBlocklyPluginFactory):
