@@ -1,15 +1,4 @@
-from pyri.sandbox import blockly_compiler
-import io
-
-def _do_blockly_compile_test(blockly_json, expected_pysrc):
-    json_io = io.StringIO(blockly_json)
-    output_io = io.StringIO()
-
-    blockly_compiler.compile_blockly_file(json_io, output_io)
-    output_io.seek(0)
-    pysrc_str = output_io.read()
-    print(pysrc_str)
-    assert pysrc_str == expected_pysrc
+from pyri.sandbox.util import run_blockly_compile_test
 
 def test_blockly_compiler_vision():
     vision_blockly_json = \
@@ -283,4 +272,4 @@ def test_blockly_compiler_vision():
         "  var2 = vision_template_match(var4, var1, var3)\n" \
         "  var1 = vision_matched_template_get_pose(var4)\n"
 
-    _do_blockly_compile_test(vision_blockly_json, expected_pysrc)
+    run_blockly_compile_test(vision_blockly_json, expected_pysrc)
