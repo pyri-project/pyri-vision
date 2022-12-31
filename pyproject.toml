@@ -1,0 +1,62 @@
+[project]
+
+name = "pyri-vision"
+version = "0.2.0"
+description = "PyRI Teach Pendant Vision Plugin"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE.txt"}
+keywords = ["pyodide", "pyri-project", "pyri-runtime-package", "robotics"]
+authors = [
+    {name = "John Wason", email = "wason@wasontech.com"}
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Scientific/Engineering"
+]
+
+dependencies = [
+    'pyri-common',
+    'opencv-contrib-python',
+    'shapely',
+    'RobotRaconteur',
+    'RobotRaconteurCompanion'
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio"
+]
+
+[project.urls]
+homepage="http://pyri.tech"
+repository="https://github.com/pyri-project/pyri-vision"
+
+[project.scripts]
+pyri-vision-aruco-detection-service = "pyri.vision.aruco_detection_service.__main__:main"
+pyri-vision-camera-calibration-service = "pyri.vision.camera_calibration_service.__main__:main"
+pyri-vision-camera-viewer-service = "pyri.vision.camera_viewer_service.__main__:main"
+pyri-vision-robot-calibration-service = "pyri.vision.robot_calibration_service.__main__:main"
+pyri-vision-template-matching-service = "pyri.vision.template_matching.__main__:main"
+
+
+[project.entry-points."pyri.plugins.service_node_launch"]
+pyri-vision-launch = "pyri.vision.service_node_launch:get_service_node_launch_factory"
+
+[project.entry-points."pyri.plugins.device_type_adapter"]
+pyri-vision-type-adapter = "pyri.vision.device_type_adapter:get_device_type_adapter_factory"
+
+[project.entry-points."pyri.plugins.sandbox_functions"]
+pyri-vision-sandbox-functions = "pyri.vision.sandbox_functions:get_sandbox_functions_factory"
+
+[project.entry-points."pyri.plugins.blockly"]
+pyri-vision-plugin-blockly = "pyri.vision.blockly:get_blockly_factory"
+
+[build-system]
+build-backend = 'setuptools.build_meta'
+requires = [
+    'setuptools',
+    'toml',
+]
