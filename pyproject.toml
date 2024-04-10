@@ -1,7 +1,7 @@
 [project]
 
 name = "pyri-vision"
-version = "0.2.0"
+version = "0.3.0"
 description = "PyRI Teach Pendant Vision Plugin"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -20,8 +20,8 @@ dependencies = [
     'pyri-common',
     'opencv-contrib-python',
     'shapely',
-    'RobotRaconteur',
-    'RobotRaconteurCompanion'
+    'RobotRaconteur>=1.2.0',
+    'RobotRaconteurCompanion>=0.4.0',
 ]
 
 [project.optional-dependencies]
@@ -60,3 +60,10 @@ requires = [
     'setuptools',
     'toml',
 ]
+
+[tool.setuptools.package-data]
+'pyri.vision.aruco_detection_service' = ['*.robdef','*.yml']
+'pyri.vision.camera_calibration_service' = ['*.robdef','*.yml']
+'pyri.vision.camera_viewer_service' = ['*.robdef','*.yml']
+'pyri.vision.robot_calibration_service' = ['*.robdef','*.yml']
+'pyri.vision.template_matching' = ['*.robdef','*.yml']
